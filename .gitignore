@@ -1,0 +1,7 @@
+.env
+data/osm/
+data/shp/
+*.pbf
+*.osm
+pgdata/
+__pycache__/
