@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS przychodnie_poz (
     geom      GEOMETRY(POINT, 2180) NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_przychodnie_poz_geom ON przychodnie_poz USING GiST (geom);
+CREATE INDEX IF NOT EXISTS idx_przychodnie_poz_geom  ON przychodnie_poz USING GiST (geom);
 CREATE INDEX IF NOT EXISTS idx_przychodnie_poz_rpwdl ON przychodnie_poz (nr_rpwdl);
 
 -- Hospitals with emergency rooms (SOR — Szpitalny Oddział Ratunkowy)
@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS apteki (
 
 CREATE INDEX IF NOT EXISTS idx_apteki_geom ON apteki USING GiST (geom);
 
--- Road network vertices (nodes)
+-- Road network vertices (nodes) — BIGINT to match pgRouting return types
 CREATE TABLE IF NOT EXISTS drogi_vertices (
     id   BIGINT PRIMARY KEY,
     geom GEOMETRY(POINT, 2180)
@@ -63,16 +63,16 @@ CREATE TABLE IF NOT EXISTS drogi_vertices (
 
 CREATE INDEX IF NOT EXISTS idx_drogi_vertices_geom ON drogi_vertices USING GiST (geom);
 
--- Road network edges (topology)
+-- Road network edges (topology) — BIGINT throughout
 CREATE TABLE IF NOT EXISTS drogi_topo (
-    id           SERIAL PRIMARY KEY,
-    source       INTEGER,
-    target       INTEGER,
-    cost         NUMERIC,          -- metres (length of segment)
-    reverse_cost NUMERIC,          -- same for bidirectional roads
+    id           BIGSERIAL PRIMARY KEY,
+    source       BIGINT,
+    target       BIGINT,
+    cost         DOUBLE PRECISION,   -- metres
+    reverse_cost DOUBLE PRECISION,   -- metres (same for bidirectional)
     geom         GEOMETRY(LINESTRING, 2180)
 );
 
-CREATE INDEX IF NOT EXISTS idx_drogi_topo_source  ON drogi_topo (source);
-CREATE INDEX IF NOT EXISTS idx_drogi_topo_target  ON drogi_topo (target);
-CREATE INDEX IF NOT EXISTS idx_drogi_topo_geom    ON drogi_topo USING GiST (geom);
+CREATE INDEX IF NOT EXISTS idx_drogi_topo_source ON drogi_topo (source);
+CREATE INDEX IF NOT EXISTS idx_drogi_topo_target ON drogi_topo (target);
+CREATE INDEX IF NOT EXISTS idx_drogi_topo_geom   ON drogi_topo USING GiST (geom);

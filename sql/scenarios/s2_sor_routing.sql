@@ -25,18 +25,29 @@ CROSS JOIN LATERAL (
     FROM drogi_vertices
     ORDER BY geom <-> s.geom
     LIMIT 1
-) v;
+) v
+ORDER BY s.id;
 
 
--- Q3: Izochrona 10 min (8333 m) dla wybranego szpitala
---     :vertex_szpitala — węzeł najbliższy wybranemu szpitalowi (z Q2)
-\set vertex_szpitala 44
+-- Q3: Izochrona 10 min (8333 m) dla wybranego szpitala (id=1)
+--     Vertex wyliczany automatycznie z KNN — nie wymaga parametru.
+\set szpital_id 1
 
+WITH szpital AS (
+    SELECT geom FROM szpitale_sor WHERE id = :szpital_id
+),
+vertex_szpitala AS (
+    SELECT v.id::BIGINT AS vid
+    FROM drogi_vertices v, szpital s
+    ORDER BY v.geom <-> s.geom
+    LIMIT 1
+)
 SELECT ST_ConcaveHull(ST_Collect(v.geom), 0.85) AS izochrona_10min
-FROM pgr_drivingDistance(
-    'SELECT id, source, target, cost FROM drogi_topo',
-    :vertex_szpitala, 8333, false
-) pgd
+FROM vertex_szpitala vs,
+     pgr_drivingDistance(
+         'SELECT id, source, target, cost FROM drogi_topo',
+         vs.vid, 8333, false
+     ) pgd
 JOIN drogi_vertices v ON v.id = pgd.node;
 
 
@@ -60,7 +71,7 @@ reachable AS (
     FROM hospital_vertices hv,
          pgr_drivingDistance(
              'SELECT id, source, target, cost FROM drogi_topo',
-             ARRAY(SELECT vertex_id FROM hospital_vertices),
+             ARRAY(SELECT vertex_id FROM hospital_vertices)::BIGINT[],
              12500, false
          ) pgd
     WHERE pgd.start_vid = hv.vertex_id
@@ -70,17 +81,32 @@ SELECT szpital_id, nazwa, strefa,
 FROM reachable r
 JOIN drogi_vertices v ON v.id = r.node
 WHERE strefa IS NOT NULL
-GROUP BY szpital_id, nazwa, strefa;
+GROUP BY szpital_id, nazwa, strefa
+ORDER BY szpital_id, strefa;
 
 
 -- Q5: Siatka 500 m × 500 m — czas dojazdu do najbliższego SOR
---     (pgr_dijkstra wiele źródeł → wiele celów)
+--
+--     Odwrócona strategia: dla każdego szpitala SOR uruchom
+--     pgr_drivingDistance z budżetem 30 min (25 000 m). Zwraca
+--     to (vertex, min_koszt) — jedno wywołanie zamiast N*M.
+--     Następnie do każdej komórki siatki dopasowujemy najbliższy
+--     vertex i bierzemy jego minimalny koszt do dowolnego SOR.
 WITH hospital_vertices AS (
-    SELECT v.id AS vertex_id
+    SELECT v.id::BIGINT AS vertex_id
     FROM szpitale_sor s
     CROSS JOIN LATERAL (
         SELECT id FROM drogi_vertices ORDER BY geom <-> s.geom LIMIT 1
     ) v
+),
+reachability AS (
+    SELECT pgd.node AS vertex_id, MIN(pgd.agg_cost) AS min_koszt_m
+    FROM pgr_drivingDistance(
+        'SELECT id, source, target, cost FROM drogi_topo',
+        ARRAY(SELECT vertex_id FROM hospital_vertices)::BIGINT[],
+        25000, false
+    ) pgd
+    GROUP BY pgd.node
 ),
 grid AS (
     SELECT
@@ -95,36 +121,31 @@ grid_vertices AS (
     CROSS JOIN LATERAL (
         SELECT id FROM drogi_vertices ORDER BY geom <-> g.geom LIMIT 1
     ) v
-),
-dijkstra AS (
-    SELECT start_vid, end_vid, agg_cost
-    FROM pgr_dijkstra(
-        'SELECT id, source, target, cost FROM drogi_topo',
-        ARRAY(SELECT vertex_id FROM grid_vertices),
-        ARRAY(SELECT vertex_id FROM hospital_vertices),
-        directed := false
-    )
-),
-min_cost_per_cell AS (
-    SELECT gv.cell_id, gv.geom,
-           MIN(d.agg_cost)                       AS koszt_m,
-           ROUND((MIN(d.agg_cost) / 833.3)::NUMERIC, 1) AS czas_min
-    FROM grid_vertices gv
-    LEFT JOIN dijkstra d ON d.start_vid = gv.vertex_id
-    GROUP BY gv.cell_id, gv.geom
 )
-SELECT cell_id, geom, koszt_m, czas_min
-FROM min_cost_per_cell
+SELECT gv.cell_id, gv.geom,
+       r.min_koszt_m                                   AS koszt_m,
+       ROUND((r.min_koszt_m / 833.3)::NUMERIC, 1)      AS czas_min
+FROM grid_vertices gv
+LEFT JOIN reachability r ON r.vertex_id = gv.vertex_id
 ORDER BY czas_min DESC NULLS FIRST;
 
 
 -- Q6: Komórki z czasem dojazdu >15 min — obszary krytyczne
 WITH hospital_vertices AS (
-    SELECT v.id AS vertex_id
+    SELECT v.id::BIGINT AS vertex_id
     FROM szpitale_sor s
     CROSS JOIN LATERAL (
         SELECT id FROM drogi_vertices ORDER BY geom <-> s.geom LIMIT 1
     ) v
+),
+reachability AS (
+    SELECT pgd.node AS vertex_id, MIN(pgd.agg_cost) AS min_koszt_m
+    FROM pgr_drivingDistance(
+        'SELECT id, source, target, cost FROM drogi_topo',
+        ARRAY(SELECT vertex_id FROM hospital_vertices)::BIGINT[],
+        25000, false
+    ) pgd
+    GROUP BY pgd.node
 ),
 grid AS (
     SELECT ST_SetSRID(ST_Point(x, y), 2180) AS geom
@@ -137,21 +158,11 @@ grid_vertices AS (
     CROSS JOIN LATERAL (
         SELECT id FROM drogi_vertices ORDER BY geom <-> g.geom LIMIT 1
     ) v
-),
-dijkstra AS (
-    SELECT start_vid, MIN(agg_cost) AS min_koszt_m
-    FROM pgr_dijkstra(
-        'SELECT id, source, target, cost FROM drogi_topo',
-        ARRAY(SELECT vertex_id FROM grid_vertices),
-        ARRAY(SELECT vertex_id FROM hospital_vertices),
-        directed := false
-    )
-    GROUP BY start_vid
 )
 SELECT gv.geom,
-       d.min_koszt_m                              AS koszt_m,
-       ROUND((d.min_koszt_m / 833.3)::NUMERIC, 1) AS czas_min
+       r.min_koszt_m                               AS koszt_m,
+       ROUND((r.min_koszt_m / 833.3)::NUMERIC, 1)  AS czas_min
 FROM grid_vertices gv
-JOIN dijkstra d ON d.start_vid = gv.vertex_id
-WHERE d.min_koszt_m > 12500   -- > 15 min przy 50 km/h
-ORDER BY czas_min DESC;
+LEFT JOIN reachability r ON r.vertex_id = gv.vertex_id
+WHERE r.min_koszt_m IS NULL OR r.min_koszt_m > 12500   -- > 15 min @ 50 km/h
+ORDER BY czas_min DESC NULLS FIRST;

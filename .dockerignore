@@ -1,0 +1,12 @@
+.git
+.gitignore
+.claude
+.env
+data/osm
+data/shp
+*.pbf
+*.osm
+*.md
+*.pdf
+qgis
+scripts

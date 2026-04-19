@@ -1,6 +1,6 @@
 # Dostępność opieki zdrowotnej w Warszawie — projekt SPDB
 
-Wizualizacja analitycznych zapytań przestrzennych SQL — dostępność opieki zdrowotnej w Warszawie  
+Wizualizacja analitycznych zapytań przestrzennych SQL — dostępność opieki zdrowotnej w Warszawie
 Łukasz Siemionek, Piotr Liszewski · kwiecień 2026
 
 ## Opis
@@ -9,7 +9,7 @@ Projekt demonstruje wielokrokową analizę przestrzenną prowadzoną w czystym S
 z PostgreSQL + PostGIS + pgRouting. Wyniki wizualizowane są bezpośrednio w QGIS
 podłączonym do bazy danych. Cała logika analityczna znajduje się w bazie.
 
-**Domena:** dostępność opieki zdrowotnej w 18 dzielnicach m.st. Warszawy  
+**Domena:** dostępność opieki zdrowotnej w 18 dzielnicach m.st. Warszawy
 **Układ współrzędnych:** EPSG:2180 (PL-1992)
 
 ## Struktura projektu
@@ -18,32 +18,40 @@ podłączonym do bazy danych. Cała logika analityczna znajduje się w bazie.
 .
 ├── Dockerfile                  # PostgreSQL 16 + PostGIS 3.4 + pgRouting
 ├── docker-compose.yml          # db + pgAdmin
+├── .dockerignore
 ├── .env.example                # zmienne środowiskowe
 ├── sql/
 │   ├── init/                   # skrypty auto-wykonywane przy starcie kontenera
 │   │   ├── 01_extensions.sql   # PostGIS, pgRouting
-│   │   ├── 02_schema.sql       # 7 tabel + indeksy GiST
-│   │   └── 03_seed_data.sql    # syntetyczne dane testowe
-│   └── scenarios/              # 6 scenariuszy analitycznych (drill-down)
-│       ├── s1_medical_deserts.sql      # 7 zapytań — pustynie medyczne
-│       ├── s2_sor_routing.sql          # 6 zapytań — czas dojazdu do SOR
-│       ├── s3_new_clinic_location.sql  # 5 zapytań — lokalizacja nowej przychodni
-│       ├── s4_pharmacy_density.sql     # 4 zapytania — gęstość aptek
-│       ├── s5_nearest_pharmacy.sql     # 3 zapytania — najbliższa apteka
-│       └── s6_district_facilities.sql # 2 zapytania — placówki w dzielnicy
+│   │   ├── 02_schema.sql       # 7 tabel + indeksy GiST (BIGINT w grafie)
+│   │   └── 03_seed_data.sql    # syntetyczne dane (Voronoi dla dzielnic)
+│   ├── scenarios/              # 6 scenariuszy analitycznych (drill-down)
+│   │   ├── s1_medical_deserts.sql       # 7 zapytań
+│   │   ├── s2_sor_routing.sql           # 6 zapytań (auto-wybór wierzchołka)
+│   │   ├── s3_new_clinic_location.sql   # 5 zapytań
+│   │   ├── s4_pharmacy_density.sql      # 4 zapytania
+│   │   ├── s5_nearest_pharmacy.sql      # 3 zapytania
+│   │   └── s6_district_facilities.sql   # 2 zapytania (scalar subqueries)
+│   └── experiments/            # eksperymenty E1–E6 z dokumentacji
+│       ├── e1_data_import.sql       # walidacja importu, SRID, topologia
+│       ├── e3_gist_impact.sql       # benchmark z/bez GiST, N=10³..10⁵
+│       ├── e4_pgrouting_perf.sql    # 500 m vs 1 km grid
+│       └── e5_case_study_s1.sql     # materialised views pustyń medycznych
 ├── scripts/
-│   ├── run_scenario.sh         # uruchomienie scenariusza psql
-│   └── import_osm.sh           # import prawdziwej sieci OSM (osm2pgrouting)
+│   ├── run_scenario.sh         # uruchomienie jednego scenariusza
+│   ├── run_experiment.sh       # uruchomienie jednego eksperymentu
+│   └── import_osm.sh           # import OSM w kontenerze (osm2pgrouting)
 └── qgis/
     └── README.md               # konfiguracja warstw w QGIS
 ```
 
-## Szybki start (< 15 min od git clone do pierwszej warstwy w QGIS)
+## Szybki start
 
 ### Wymagania
-- Docker Desktop
+
+- Docker Desktop (≥ 20.10, Compose v2)
 - QGIS 3.x (klient GIS)
-- `psql` (opcjonalnie, dla scenariuszy z CLI)
+- `psql` (opcjonalnie — skrypty wykonują wszystko w kontenerze)
 
 ### 1. Uruchom bazę danych
 
@@ -52,75 +60,106 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-Kontener automatycznie uruchomi skrypty z `sql/init/` w kolejności numerycznej:
+Skrypty `sql/init/` uruchamiane są automatycznie w kolejności numerycznej:
 1. `01_extensions.sql` — PostGIS, pgRouting
-2. `02_schema.sql` — 7 tabel z indeksami GiST
-3. `03_seed_data.sql` — syntetyczne dane (18 dzielnic, 5 SOR, 25 POZ, 40 aptek, sieć dróg)
+2. `02_schema.sql` — 7 tabel z indeksami GiST (BIGINT dla grafu)
+3. `03_seed_data.sql` — 18 dzielnic z Voronoi + dane zdrowotne + siatka dróg
 
-Sprawdź status:
+pgAdmin: http://localhost:8080 (`admin@localhost.pl` / `admin`)
+
+### 2. Weryfikacja poprawności danych (E1)
+
 ```bash
-docker compose logs -f db
-# Gdy zobaczysz "database system is ready to accept connections" — gotowe
+./scripts/run_experiment.sh 1
 ```
 
-pgAdmin dostępny pod: http://localhost:8080 (admin@localhost.pl / admin)
+Oczekiwany wynik:
+- `dzielnice`: 18 rekordów, brak nakładania się (test: `pary_z_nakladem = 0`)
+- SRID = 2180 we wszystkich tabelach przestrzennych
+- `pgr_analyzeGraph` zwraca spójną topologię
 
-### 2. Połącz QGIS z bazą
+### 3. Połącz QGIS z bazą
 
-Patrz [qgis/README.md](qgis/README.md)
+Patrz [qgis/README.md](qgis/README.md).
 
-### 3. Uruchom scenariusze analityczne
+### 4. Uruchom scenariusze analityczne
 
 ```bash
-chmod +x scripts/run_scenario.sh
-
-# Wszystkie scenariusze po kolei
-for i in 1 2 3 4 5 6; do
-    ./scripts/run_scenario.sh $i
-done
-
-# Lub bezpośrednio przez psql (z psql variables)
-psql -h localhost -U postgres -d warszawa_health \
-    -f sql/scenarios/s1_medical_deserts.sql
+./scripts/run_scenario.sh 1   # Pustynie medyczne
+./scripts/run_scenario.sh 2   # SOR routing
+./scripts/run_scenario.sh 3   # Lokalizacja nowej przychodni
+./scripts/run_scenario.sh 4   # Gęstość aptek
+./scripts/run_scenario.sh 5   # Najbliższa apteka
+./scripts/run_scenario.sh 6   # Placówki w dzielnicy
 ```
 
-### 4. Import prawdziwej sieci drogowej OSM (opcjonalny)
-
-Domyślnie baza zawiera syntetyczną siatkę 5 km. Aby zastąpić ją rzeczywistą
-siecią z OpenStreetMap (wymagany `osm2pgrouting` i `osmium`/`osmosis`):
+### 5. Eksperymenty (E1–E6)
 
 ```bash
-chmod +x scripts/import_osm.sh
+./scripts/run_experiment.sh 1   # Poprawność danych (record counts, SRID, topologia)
+./scripts/run_experiment.sh 2   # End-to-end run wszystkich scenariuszy
+./scripts/run_experiment.sh 3   # GiST benchmark, N=10³..10⁵
+./scripts/run_experiment.sh 4   # pgRouting — 500 m vs 1 km
+./scripts/run_experiment.sh 5   # Studium przypadku S1 (materialised views)
+./scripts/run_experiment.sh 6   # Clean rebuild < 15 min (target z dokumentacji)
+```
+
+### 6. Import prawdziwej sieci OSM (opcjonalnie)
+
+Domyślna siatka 5 km jest syntetyczna. Aby podmienić ją na realny graf
+z OpenStreetMap (pracuje **wewnątrz kontenera** — nie wymaga instalacji
+osm2pgrouting na hoście):
+
+```bash
 ./scripts/import_osm.sh
 ```
 
 ## Model danych
 
-| Tabela               | Geometria           | Źródło danych                |
-|----------------------|---------------------|------------------------------|
-| `apteki`             | POINT (2180)        | OpenStreetMap                |
-| `przychodnie_poz`    | POINT (2180)        | RPWDL / OSM                  |
-| `szpitale_sor`       | POINT (2180)        | RPWDL / NFZ (dane.gov.pl)    |
-| `dzielnice`          | MULTIPOLYGON (2180) | PRG / Geoportal              |
-| `demografia_dzielnice` | — (atrybuty)      | GUS BDL                      |
-| `drogi_topo`         | LINESTRING (2180)   | OpenStreetMap (osm2pgrouting)|
-| `drogi_vertices`     | POINT (2180)        | OpenStreetMap (osm2pgrouting)|
+| Tabela                  | Geometria / typ        | Źródło                      |
+|-------------------------|------------------------|-----------------------------|
+| `apteki`                | POINT (2180)           | OpenStreetMap               |
+| `przychodnie_poz`       | POINT (2180)           | RPWDL / OSM                 |
+| `szpitale_sor`          | POINT (2180)           | RPWDL / NFZ (dane.gov.pl)   |
+| `dzielnice`             | MULTIPOLYGON (2180)    | Voronoi (seed) / PRG (prod) |
+| `demografia_dzielnice`  | atrybuty               | GUS BDL 2023                |
+| `drogi_topo`            | LINESTRING (2180) + BIGINT source/target | osm2pgrouting |
+| `drogi_vertices`        | POINT (2180), id BIGINT | osm2pgrouting              |
 
 ## Scenariusze analityczne
 
-| # | Scenariusz | Zapytania | Kluczowe funkcje PostGIS |
-|---|-----------|-----------|--------------------------|
-| S1 | Pustynie medyczne | 7 | `ST_Buffer`, `ST_Union`, `ST_Difference` |
-| S2 | Czas dojazdu do SOR | 6 | `pgr_drivingDistance`, `pgr_dijkstra`, `ST_ConcaveHull` |
-| S3 | Lokalizacja nowej przychodni | 5 | `ST_VoronoiPolygons`, `ST_Intersection` |
-| S4 | Gęstość aptek | 4 | `ST_Contains`, `RANK()`, `NTILE()` |
-| S5 | Najbliższa apteka | 3 | `ST_DWithin`, KNN `<->`, `EXPLAIN ANALYZE` |
-| S6 | Placówki w dzielnicy | 2 | `ST_Contains`, `LEFT JOIN` przestrzenny |
+| #  | Scenariusz                  | Q   | Kluczowe funkcje                              |
+|----|-----------------------------|----:|-----------------------------------------------|
+| S1 | Pustynie medyczne           | 7   | `ST_Buffer`, `ST_Union`, `ST_Difference`      |
+| S2 | Dojazd do SOR               | 6   | `pgr_drivingDistance`, `ST_ConcaveHull`       |
+| S3 | Lokalizacja nowej POZ       | 5   | `ST_VoronoiPolygons`, `ST_Intersection`       |
+| S4 | Gęstość aptek               | 4   | `ST_Contains`, `RANK()`, `NTILE()`            |
+| S5 | Najbliższa apteka           | 3   | `ST_DWithin`, KNN `<->`, `EXPLAIN ANALYZE`    |
+| S6 | Placówki w dzielnicy        | 2   | scalar subqueries z `ST_Contains`             |
 
-## Ryzyka i ograniczenia
+## Kluczowe decyzje projektowe
 
-- **Dane syntetyczne** — seed data używa uproszczonych okrągłych granic dzielnic
-  i siatki drogowej; wyniki na prawdziwych danych będą się różnić
-- **Model ludności** — równomierne rozproszenie w obrębie dzielnicy (S1 Q7, S3 Q4)
-- **Sieć OSM** — mogą istnieć izolowane fragmenty grafu; walidacja: `pgr_analyzeGraph`
-- **RPWDL** — rejestr bywa niekompletny; uzupełnienie z OSM tagiem `amenity=clinic`
+- **Dzielnice jako Voronoi** — seed generuje tessellację Voronoi z centroidów
+  dzielnic przyciętą do uproszczonej granicy Warszawy. Gwarantuje brak
+  nakładania się (istotne dla `ST_Contains` w S4/S6).
+- **Graf w BIGINT** — `drogi_vertices.id`, `drogi_topo.source/target` są
+  `BIGINT`, zgodnie z zwracanymi typami pgRouting. Zapobiega to konwersjom
+  i problemom przy dużych grafach OSM.
+- **S2 Q5 — odwrócona strategia** — zamiast uruchamiać `pgr_dijkstra` z
+  każdej z ~7 000 komórek, używamy `pgr_drivingDistance` z ~5 szpitali
+  z budżetem 30 min; to O(hosp × graf) zamiast O(komórek × graf).
+- **S6 Q2 — scalar subqueries** — zamiast triple `LEFT JOIN` z `COUNT(DISTINCT)`
+  (rząd wierszy O(n·m·k)) używamy skorelowanych podzapytań O(n+m+k).
+- **Import OSM w kontenerze** — `scripts/import_osm.sh` wywołuje
+  `osm2pgrouting` i `osmium` przez `docker compose exec`; host nie musi
+  mieć tych narzędzi.
+
+## Ograniczenia (świadome)
+
+- **Model ludności** — równomierne rozproszenie w obrębie dzielnicy
+  (jawnie odnotowane w dokumentacji; wpływa na S1 Q7, S3 Q4).
+- **Voronoi vs. PRG** — seed używa syntetycznych granic; proporcje
+  `powierzchnia_km2` liczone są z geometrii Voronoi i różnią się
+  od GUS. W produkcji podmień na PRG/Geoportal.
+- **Siatka drogowa 5 km (seed)** — minimalny graf do testów; prawdziwe
+  izochrony wymagają importu OSM (krok 6).
