@@ -45,5 +45,6 @@ FROM apteki
 ORDER BY geom <-> :punkt
 LIMIT 3;
 
--- Krok 3c: przywróć indeks
-CREATE INDEX idx_apteki_geom ON apteki USING GiST (geom);
+-- Krok 3c: przywróć indeks i odśwież statystyki planera
+CREATE INDEX IF NOT EXISTS idx_apteki_geom ON apteki USING GiST (geom);
+ANALYZE apteki;

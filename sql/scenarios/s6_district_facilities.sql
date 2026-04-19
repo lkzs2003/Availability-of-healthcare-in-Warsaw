@@ -14,23 +14,27 @@ ORDER BY p.nazwa;
 
 
 -- Q2: Zbiorcze zestawienie wszystkich typów placówek per dzielnica
---     (3× LEFT JOIN przestrzenny — apteki, przychodnie, SOR)
+--     Scalar subqueries zamiast triple LEFT JOIN — unika
+--     multiplikatywnego wybuchu wierszy (O(n+m+k) zamiast O(n*m*k)).
 SELECT
-    d.nazwa                         AS dzielnica,
+    d.nazwa                                                   AS dzielnica,
     dd.ludnosc,
-    COUNT(DISTINCT a.id)            AS liczba_aptek,
-    COUNT(DISTINCT p.id)            AS liczba_przychodni_poz,
-    COUNT(DISTINCT s.id)            AS liczba_sor,
-    ROUND(dd.ludnosc::NUMERIC
-          / NULLIF(COUNT(DISTINCT p.id), 0), 0) AS mieszkancy_na_przychodnie
+    (SELECT COUNT(*) FROM apteki a
+        WHERE ST_Contains(d.geom, a.geom))                    AS liczba_aptek,
+    (SELECT COUNT(*) FROM przychodnie_poz p
+        WHERE ST_Contains(d.geom, p.geom))                    AS liczba_przychodni_poz,
+    (SELECT COUNT(*) FROM szpitale_sor s
+        WHERE ST_Contains(d.geom, s.geom))                    AS liczba_sor,
+    ROUND(
+        dd.ludnosc::NUMERIC
+        / NULLIF(
+            (SELECT COUNT(*) FROM przychodnie_poz p
+                WHERE ST_Contains(d.geom, p.geom)),
+            0
+        ),
+        0
+    )                                                         AS mieszkancy_na_przychodnie
 FROM dzielnice d
 JOIN demografia_dzielnice dd
     ON dd.dzielnica_id = d.id AND dd.rok = 2023
-LEFT JOIN apteki a
-    ON ST_Contains(d.geom, a.geom)
-LEFT JOIN przychodnie_poz p
-    ON ST_Contains(d.geom, p.geom)
-LEFT JOIN szpitale_sor s
-    ON ST_Contains(d.geom, s.geom)
-GROUP BY d.id, d.nazwa, dd.ludnosc
 ORDER BY d.nazwa;
