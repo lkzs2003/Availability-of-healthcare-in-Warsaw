@@ -35,16 +35,19 @@ FROM apteki
 ORDER BY geom <-> :punkt
 LIMIT 3;
 
--- Krok 3b: usuń indeks i powtórz zapytanie
-DROP INDEX IF EXISTS idx_apteki_geom;
+-- Krok 3b: benchmark QUERY PLAN bez GiST (rolled back — index survives)
+--          Using ROLLBACK ensures no permanent schema mutation if interrupted.
+BEGIN;
+    DROP INDEX idx_apteki_geom;
 
-EXPLAIN ANALYZE
-SELECT id, nazwa,
-       ST_Distance(geom, :punkt) AS odl_m
-FROM apteki
-ORDER BY geom <-> :punkt
-LIMIT 3;
+    EXPLAIN ANALYZE
+    SELECT id, nazwa,
+           ST_Distance(geom, :punkt) AS odl_m
+    FROM apteki
+    ORDER BY geom <-> :punkt
+    LIMIT 3;
 
--- Krok 3c: przywróć indeks i odśwież statystyki planera
-CREATE INDEX IF NOT EXISTS idx_apteki_geom ON apteki USING GiST (geom);
+    ROLLBACK;  -- Cancel the DROP, index is intact
+
+-- Krok 3c: index still exists; optionally re-analyze if needed
 ANALYZE apteki;
