@@ -8,12 +8,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 
-source "${ROOT_DIR}/.env" 2>/dev/null || true
+# Load .env with proper export (set -a/set +a ensures all vars are exported)
+set -a
+[[ -f "${ROOT_DIR}/.env" ]] && source "${ROOT_DIR}/.env"
+set +a
 
-DB_HOST="${DB_HOST:-localhost}"
-DB_PORT="${DB_PORT:-5432}"
-DB_NAME="${POSTGRES_DB:-warszawa_health}"
-DB_USER="${POSTGRES_USER:-postgres}"
+: "${POSTGRES_DB:=warszawa_health}"
+: "${POSTGRES_USER:=postgres}"
+: "${POSTGRES_PASSWORD:=postgres}"
 
 if [[ $# -lt 1 ]]; then
     echo "Usage: $0 <scenario_number>"
@@ -47,12 +49,9 @@ fi
 SQL_PATH="${ROOT_DIR}/sql/scenarios/${SCENARIO_FILE}"
 
 echo "Running scenario S${SCENARIO_NUM}: ${SCENARIO_FILE}"
-echo "Database: ${DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+echo "Database: ${POSTGRES_USER}@db:5432/${POSTGRES_DB}"
 echo "---"
 
-PGPASSWORD="${POSTGRES_PASSWORD:-postgres}" psql \
-    -h "$DB_HOST" \
-    -p "$DB_PORT" \
-    -U "$DB_USER" \
-    -d "$DB_NAME" \
-    -f "$SQL_PATH"
+# Run inside container via docker compose exec (no host psql dependency)
+docker compose exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" db \
+    psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" < "$SQL_PATH"

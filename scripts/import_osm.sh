@@ -40,14 +40,9 @@ else
 fi
 
 echo ""
-echo "=== Step 2: Clip to Warsaw bbox (inside container) ==="
+echo "=== Step 2: Clip to Warsaw bbox (using osmium, baked into image) ==="
 # Warsaw bbox (WGS84): W=20.85 S=52.10 E=21.27 N=52.37
-if ! $COMPOSE exec -T "$SERVICE" which osmium >/dev/null 2>&1; then
-    echo "osmium not present in container — installing..."
-    $COMPOSE exec -T "$SERVICE" bash -c \
-        "apt-get update >/dev/null && apt-get install -y --no-install-recommends osmium-tool >/dev/null"
-fi
-
+# osmium-tool is pre-installed in Dockerfile for immutability
 $COMPOSE exec -T "$SERVICE" osmium extract \
     --bbox 20.85,52.10,21.27,52.37 \
     --overwrite \

@@ -4,6 +4,12 @@
 -- z każdego punktu miasta po faktycznej sieci dróg?
 -- Koszt w drogi_topo = długość segmentu w metrach
 -- 50 km/h → 1 min = 833 m → 10 min = 8 333 m
+--
+-- ⚠️  LIMITATION: The synthetic 5 km grid (seed data) has only 88 vertices.
+--     Five hospitals snapped via KNN will often collapse to shared vertices.
+--     This breaks isochrone granularity in Q4 and makes Q5 unreliable.
+--     For meaningful results, run: ./scripts/import_osm.sh
+--     to replace the synthetic graph with real OSM road network.
 -- ============================================================
 
 -- Q1: Lista szpitali z SOR
@@ -116,15 +122,18 @@ grid AS (
          generate_series(490000, 525000, 500) y
 ),
 grid_vertices AS (
-    SELECT g.cell_id, g.geom, v.id AS vertex_id
+    SELECT g.cell_id, g.geom, v.id AS vertex_id,
+           ROUND(ST_Distance(g.geom, v.geom)::NUMERIC, 0) AS snap_m
     FROM grid g
     CROSS JOIN LATERAL (
-        SELECT id FROM drogi_vertices ORDER BY geom <-> g.geom LIMIT 1
+        SELECT id, geom FROM drogi_vertices ORDER BY geom <-> g.geom LIMIT 1
     ) v
 )
 SELECT gv.cell_id, gv.geom,
-       r.min_koszt_m                                   AS koszt_m,
-       ROUND((r.min_koszt_m / 833.3)::NUMERIC, 1)      AS czas_min
+       gv.snap_m                                            AS snap_distance_m,
+       r.min_koszt_m                                        AS koszt_siec_m,
+       (r.min_koszt_m + gv.snap_m)::INT                     AS koszt_total_m,
+       ROUND(((r.min_koszt_m + gv.snap_m) / 833.3)::NUMERIC, 1) AS czas_min
 FROM grid_vertices gv
 LEFT JOIN reachability r ON r.vertex_id = gv.vertex_id
 ORDER BY czas_min DESC NULLS FIRST;
@@ -153,16 +162,19 @@ grid AS (
          generate_series(490000, 525000, 500) y
 ),
 grid_vertices AS (
-    SELECT g.geom, v.id AS vertex_id
+    SELECT g.geom, v.id AS vertex_id,
+           ROUND(ST_Distance(g.geom, v.geom)::NUMERIC, 0) AS snap_m
     FROM grid g
     CROSS JOIN LATERAL (
-        SELECT id FROM drogi_vertices ORDER BY geom <-> g.geom LIMIT 1
+        SELECT id, geom FROM drogi_vertices ORDER BY geom <-> g.geom LIMIT 1
     ) v
 )
 SELECT gv.geom,
-       r.min_koszt_m                               AS koszt_m,
-       ROUND((r.min_koszt_m / 833.3)::NUMERIC, 1)  AS czas_min
+       gv.snap_m                                           AS snap_distance_m,
+       r.min_koszt_m                                       AS koszt_siec_m,
+       (r.min_koszt_m + gv.snap_m)::INT                    AS koszt_total_m,
+       ROUND(((r.min_koszt_m + gv.snap_m) / 833.3)::NUMERIC, 1) AS czas_min
 FROM grid_vertices gv
 LEFT JOIN reachability r ON r.vertex_id = gv.vertex_id
-WHERE r.min_koszt_m IS NULL OR r.min_koszt_m > 12500   -- > 15 min @ 50 km/h
+WHERE (r.min_koszt_m IS NULL) OR (r.min_koszt_m + gv.snap_m > 12500)  -- > 15 min @ 50 km/h
 ORDER BY czas_min DESC NULLS FIRST;

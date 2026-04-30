@@ -135,9 +135,11 @@ voronoi_clip AS (
 zasieg AS (
     SELECT vc.rank_nr, vc.kandydat,
            ROUND((ST_Area(vc.strefa_clip) / 1e6)::NUMERIC, 3) AS pow_strefy_km2,
-           COALESCE(SUM(
-               ROUND((ST_Area(ST_Intersection(d.geom, ST_Buffer(vc.kandydat, 1000)))
-                      / ST_Area(d.geom) * dd.ludnosc)::NUMERIC)
+           -- ROUND AFTER SUM to avoid accumulating rounding errors
+           -- Rounding before summing can lose up to 0.5 per district × 18 districts = ±9 person error
+           COALESCE(ROUND(
+               SUM(ST_Area(ST_Intersection(d.geom, ST_Buffer(vc.kandydat, 1000)))
+                   / ST_Area(d.geom) * dd.ludnosc)::NUMERIC
            ), 0) AS szac_mieszkancy_1km
     FROM voronoi_clip vc
     LEFT JOIN dzielnice d ON ST_Intersects(d.geom, ST_Buffer(vc.kandydat, 1000))

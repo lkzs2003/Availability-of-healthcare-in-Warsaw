@@ -11,7 +11,10 @@ CREATE TABLE bench_points (
     geom GEOMETRY(POINT, 2180)
 );
 
--- 100 000 punktów losowych wewnątrz bbox Warszawy
+-- 100 000 punktów losowych wewnątrz bbox Warszawy (deterministic via setseed)
+-- setseed(0.42) ensures reproducible results across runs for fair EXPLAIN ANALYZE comparison
+SELECT setseed(0.42);
+
 INSERT INTO bench_points (geom)
 SELECT ST_SetSRID(ST_Point(
     630000 + random() * 50000,

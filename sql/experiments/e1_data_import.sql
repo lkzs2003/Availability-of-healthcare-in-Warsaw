@@ -50,4 +50,13 @@ FROM dzielnice a JOIN dzielnice b
  AND ST_Area(ST_Intersection(a.geom, b.geom)) > 1.0;   -- tolerancja 1 m²
 
 -- Walidacja topologii grafu (pgRouting)
-SELECT pgr_analyzeGraph('drogi_topo', 0.001, 'geom', 'id');
+-- pgr_analyzeGraph deprecated since v3.0; use pgr_connectedComponents instead
+SELECT 'connected_components' AS metric,
+       component,
+       COUNT(*) AS vertices_in_component
+FROM pgr_connectedComponents(
+    'SELECT id, source, target, cost FROM drogi_topo'
+)
+GROUP BY component
+ORDER BY 3 DESC;
+-- Expect 1 dominant component; many small components → graph is fragmented
