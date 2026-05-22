@@ -38,18 +38,19 @@ W QGIS możesz dodać warstwę opartą na zapytaniu SQL:
 
 ### Przykład — mapa pustyń medycznych (S1 Q4)
 
+Korzysta z prekomputowanego widoku `mv_pokrycie_poz_1km` (zob. `sql/init/04_materialized_views.sql`):
+
 ```sql
-WITH pokrycie AS (
-    SELECT ST_Union(ST_Buffer(geom, 1000)) AS g FROM przychodnie_poz
-),
-miasto AS (
-    SELECT ST_Union(geom) AS g FROM dzielnice
-)
-SELECT 1 AS id, ST_Difference(m.g, p.g) AS geom
-FROM miasto m, pokrycie p
+SELECT 1 AS id,
+       ST_Difference(m.g, p.geom) AS geom
+FROM mv_pokrycie_poz_1km p,
+     (SELECT ST_Union(geom) AS g FROM dzielnice) m;
 ```
 
 Ustaw typ geometrii: **Polygon**, SRID: **2180**.
+
+Dla gotowych warstw przygotowanych pod QGIS (uproszczona ścieżka) zobacz pliki
+`qgis/sql_layers/s*.sql` — każdy zawiera jedno zapytanie zwracające jedną geometrię.
 
 ### Przykład — izochrony SOR (S2 Q4)
 

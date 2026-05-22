@@ -1,7 +1,12 @@
 .env
 data/osm/
 data/shp/
+data/cache/
 *.pbf
 *.osm
 pgdata/
 __pycache__/
+
+# Generated real-data SQL (use ./scripts/import_real_data.sh to regenerate)
+sql/init/data_real/
+*.DS_Store

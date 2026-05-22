@@ -95,7 +95,9 @@ SELECT w.source,
             THEN -1
             ELSE ST_Length(ST_Transform(w.the_geom, 2180))
        END AS reverse_cost,
-       ST_Force2D(ST_LineMerge(ST_Transform(w.the_geom, 2180)))::geometry(LINESTRING, 2180) AS geom
+       ST_MakeValid(
+           ST_Force2D(ST_LineMerge(ST_Transform(w.the_geom, 2180)))
+       )::geometry(LINESTRING, 2180) AS geom
 FROM ways w
 WHERE w.source IS NOT NULL AND w.target IS NOT NULL;  -- skip orphan edges to satisfy FK
 
@@ -114,6 +116,23 @@ ANALYZE drogi_vertices;
 SELECT 'edges'    AS tabela, COUNT(*) AS liczba FROM drogi_topo
 UNION ALL
 SELECT 'vertices' AS tabela, COUNT(*)           FROM drogi_vertices;
+
+-- Verify graph connectivity: a healthy OSM road network for one city
+-- should produce one dominant component covering >95% of vertices.
+-- If you see many small components, edges were lost during import.
+WITH comps AS (
+    SELECT component, COUNT(*) AS verts
+    FROM pgr_connectedComponents('SELECT id, source, target, cost FROM drogi_topo')
+    GROUP BY component
+)
+SELECT 'connectivity'                                                  AS metric,
+       COUNT(*)                                                        AS total_components,
+       MAX(verts)                                                      AS biggest_component_verts,
+       ROUND((MAX(verts) * 100.0 / SUM(verts))::NUMERIC, 1)            AS biggest_pct
+FROM comps;
+
+-- Refresh dependent materialised views (mv_sor_reachability uses drogi_topo)
+REFRESH MATERIALIZED VIEW mv_sor_reachability;
 SQL
 
 echo ""

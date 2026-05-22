@@ -76,7 +76,7 @@ pgAdmin: http://localhost:8080 (`admin@localhost.pl` / `admin`)
 Oczekiwany wynik:
 - `dzielnice`: 18 rekordów, brak nakładania się (test: `pary_z_nakladem = 0`)
 - SRID = 2180 we wszystkich tabelach przestrzennych
-- `pgr_analyzeGraph` zwraca spójną topologię
+- `pgr_connectedComponents` zwraca jeden dominujący komponent (graf spójny)
 
 ### 3. Połącz QGIS z bazą
 
@@ -113,6 +113,41 @@ osm2pgrouting na hoście):
 ```bash
 ./scripts/import_osm.sh
 ```
+
+### 7. Import RZECZYWISTYCH danych źródłowych (RPWDL/GUS/OSM/PRG)
+
+Domyślny seed (synthetic) używa 18 aproksymowanych dzielnic Voronoi,
+25 placówek POZ, 5 SOR i 40 aptek. Aby zastąpić go **prawdziwymi danymi**
+z publicznych API zgodnie z dokumentacją projektu:
+
+```bash
+./scripts/import_real_data.sh
+```
+
+Pobiera (z cache w `data/cache/`):
+- **18 dzielnic** — OSM `admin_level=9` (matches PRG)
+- **Ludność 2023** — GUS BDL API (`var-id=72305`)
+- **Apteki (~580)** — OSM `amenity=pharmacy`
+- **POZ (~230)** — OSM `healthcare=clinic`
+- **SOR (~4–13)** — OSM `emergency=yes` (varies; OSM tagging niespójny)
+
+Następnie automatycznie:
+- wyłącza triggery refresh MV (bulk-load)
+- ładuje 5 plików SQL do bazy
+- refreshuje wszystkie MV
+- raportuje liczniki
+
+Bez parametrów importuje wszystko; opcja `--only <name>` (`dzielnice`/`demografia`/`sor`/`poz`/`apteki`) pobiera tylko jeden dataset.
+
+**Źródła danych** (zgodnie z dokumentacją wstępną):
+
+| Tabela | Endpoint | Cache |
+|---|---|---|
+| `dzielnice`            | `overpass.kumi.systems` (admin_level=9)    | `data/cache/osm_dzielnice.json` |
+| `demografia_dzielnice` | `bdl.stat.gov.pl/api/v1` (var-id=72305)    | `data/cache/bdl_*.json`         |
+| `szpitale_sor`         | Overpass (emergency=yes ∪ SOR in name)     | `data/cache/osm_sor.json`       |
+| `przychodnie_poz`      | Overpass (healthcare=clinic)               | `data/cache/osm_poz.json`       |
+| `apteki`               | Overpass (amenity=pharmacy)                | `data/cache/osm_apteki.json`    |
 
 ## Model danych
 

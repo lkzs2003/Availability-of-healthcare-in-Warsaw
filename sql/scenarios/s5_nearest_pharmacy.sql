@@ -5,34 +5,39 @@
 -- Przykład: Plac Defilad 1 (Pałac Kultury i Nauki)
 -- ============================================================
 
--- Ustaw punkt referencywy (Pałac Kultury i Nauki, Śródmieście)
-\set punkt 'ST_Transform(ST_SetSRID(ST_Point(21.0062, 52.2319), 4326), 2180)'
+-- Punkt referencyjny (Pałac Kultury i Nauki, Śródmieście) — definiowany
+-- raz jako stała PL/pgSQL w temp table, używany we wszystkich zapytaniach.
+-- Dzięki temu ST_Transform/ST_SetSRID NIE są re-parsowane przy każdym :punkt
+-- (jak miałby psql \set z podstawieniem tekstowym).
+DROP TABLE IF EXISTS _s5_ref_point;
+CREATE TEMP TABLE _s5_ref_point AS
+SELECT ST_Transform(ST_SetSRID(ST_Point(21.0062, 52.2319), 4326), 2180) AS geom;
 
 
 -- Q1: Apteki w promieniu 500 m z filtrem bbox (szybkie pre-filtrowanie)
-SELECT id, nazwa, adres,
-       ROUND(ST_Distance(geom, :punkt)::NUMERIC, 0) AS odl_m
-FROM apteki
-WHERE geom && ST_Expand(:punkt, 500)          -- filtr bbox (używa indeksu)
-  AND ST_DWithin(geom, :punkt, 500)           -- dokładny filtr odległości
+SELECT a.id, a.nazwa, a.adres,
+       ROUND(ST_Distance(a.geom, p.geom)::NUMERIC, 0) AS odl_m
+FROM apteki a, _s5_ref_point p
+WHERE a.geom && ST_Expand(p.geom, 500)          -- filtr bbox (używa indeksu)
+  AND ST_DWithin(a.geom, p.geom, 500)           -- dokładny filtr odległości
 ORDER BY odl_m;
 
 
 -- Q2: 3 najbliższe apteki z operatorem KNN <-> (indeks GiST)
-SELECT id, nazwa, adres,
-       ROUND(ST_Distance(geom, :punkt)::NUMERIC, 0) AS odl_m
-FROM apteki
-ORDER BY geom <-> :punkt
+SELECT a.id, a.nazwa, a.adres,
+       ROUND(ST_Distance(a.geom, p.geom)::NUMERIC, 0) AS odl_m
+FROM apteki a, _s5_ref_point p
+ORDER BY a.geom <-> p.geom
 LIMIT 3;
 
 
 -- Q3: EXPLAIN ANALYZE — porównanie wydajności z indeksem i bez
 --     Krok 3a: wydajność z indeksem GiST (domyślny stan)
 EXPLAIN ANALYZE
-SELECT id, nazwa,
-       ST_Distance(geom, :punkt) AS odl_m
-FROM apteki
-ORDER BY geom <-> :punkt
+SELECT a.id, a.nazwa,
+       ST_Distance(a.geom, p.geom) AS odl_m
+FROM apteki a, _s5_ref_point p
+ORDER BY a.geom <-> p.geom
 LIMIT 3;
 
 -- Krok 3b: benchmark QUERY PLAN bez GiST (rolled back — index survives)
@@ -41,10 +46,10 @@ BEGIN;
     DROP INDEX idx_apteki_geom;
 
     EXPLAIN ANALYZE
-    SELECT id, nazwa,
-           ST_Distance(geom, :punkt) AS odl_m
-    FROM apteki
-    ORDER BY geom <-> :punkt
+    SELECT a.id, a.nazwa,
+           ST_Distance(a.geom, p.geom) AS odl_m
+    FROM apteki a, _s5_ref_point p
+    ORDER BY a.geom <-> p.geom
     LIMIT 3;
 
     ROLLBACK;  -- Cancel the DROP, index is intact

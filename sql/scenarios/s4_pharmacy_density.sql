@@ -65,11 +65,14 @@ ranked AS (
     WHERE liczba_aptek > 0
 ),
 brak_aptek AS (
+    -- kwartyl = 0 jest celowo POZA skalą 1–4 (NIE oznacza ani „najlepszej"
+    -- ani „najgorszej" dostępności — to dzielnice wyłączone z rankingu).
+    -- Brak NULL bo NULL w NTILE psuje semantykę „kwartyl=4 = najlepsza dostępność".
     SELECT nazwa,
            liczba_aptek,
            NULL::NUMERIC AS mieszkancy_na_apteke,
            NULL::BIGINT  AS rank_dostepnosc,
-           0             AS kwartyl  -- 0 = specjalna kategoria „brak aptek w dzielnicy"
+           0             AS kwartyl  -- 0 = poza skalą (brak aptek)
     FROM wskazniki
     WHERE liczba_aptek = 0
 )

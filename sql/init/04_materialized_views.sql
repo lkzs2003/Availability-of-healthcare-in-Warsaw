@@ -45,6 +45,9 @@ SELECT row_number() OVER ()                                AS cell_id,
 FROM voronoi v, miasto m
 WHERE ST_Intersects(v.strefa, m.g);
 
+-- UNIQUE on cell_id enables REFRESH MATERIALIZED VIEW CONCURRENTLY
+CREATE UNIQUE INDEX idx_mv_voronoi_poz_cell
+    ON mv_voronoi_poz (cell_id);
 CREATE INDEX idx_mv_voronoi_poz_geom
     ON mv_voronoi_poz USING GiST (strefa_clip);
 CREATE INDEX idx_mv_voronoi_poz_area
