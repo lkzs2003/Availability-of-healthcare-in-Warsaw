@@ -3,6 +3,16 @@
 -- Układ współrzędnych: EPSG:2180 (PL-1992)
 -- ============================================================
 
+-- Centralised Warsaw bounding box in EPSG:2180.
+-- Single source of truth — used by seed grid, S2 grid queries, E3 random points.
+-- xmin/ymin/xmax/ymax expressed in metres (PL-1992).
+CREATE OR REPLACE VIEW warszawa_bbox AS
+SELECT 630000::NUMERIC AS xmin,
+       490000::NUMERIC AS ymin,
+       680000::NUMERIC AS xmax,
+       525000::NUMERIC AS ymax,
+       ST_MakeEnvelope(630000, 490000, 680000, 525000, 2180) AS geom;
+
 -- Districts (18 districts of Warsaw)
 CREATE TABLE IF NOT EXISTS dzielnice (
     id               SERIAL PRIMARY KEY,
@@ -44,6 +54,7 @@ CREATE TABLE IF NOT EXISTS szpitale_sor (
 );
 
 CREATE INDEX IF NOT EXISTS idx_szpitale_sor_geom ON szpitale_sor USING GiST (geom);
+CREATE INDEX IF NOT EXISTS idx_szpitale_sor_nazwa ON szpitale_sor (nazwa);
 
 -- Pharmacies
 CREATE TABLE IF NOT EXISTS apteki (
@@ -53,7 +64,8 @@ CREATE TABLE IF NOT EXISTS apteki (
     geom  GEOMETRY(POINT, 2180) NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_apteki_geom ON apteki USING GiST (geom);
+CREATE INDEX IF NOT EXISTS idx_apteki_geom  ON apteki USING GiST (geom);
+CREATE INDEX IF NOT EXISTS idx_apteki_nazwa ON apteki (nazwa);
 
 -- Road network vertices (nodes) — BIGINT to match pgRouting return types
 CREATE TABLE IF NOT EXISTS drogi_vertices (
@@ -63,14 +75,23 @@ CREATE TABLE IF NOT EXISTS drogi_vertices (
 
 CREATE INDEX IF NOT EXISTS idx_drogi_vertices_geom ON drogi_vertices USING GiST (geom);
 
--- Road network edges (topology) — BIGINT throughout
+-- Road network edges (topology) — BIGINT throughout.
+-- NOT NULL on (source, target, cost) prevents corrupt graph rows that crash pgRouting.
+-- FK to drogi_vertices(id) is DEFERRABLE so bulk seed inserts (vertices then edges)
+-- still work and OSM import can stage rows before referential validation.
 CREATE TABLE IF NOT EXISTS drogi_topo (
     id           BIGSERIAL PRIMARY KEY,
-    source       BIGINT,
-    target       BIGINT,
-    cost         DOUBLE PRECISION,   -- metres
-    reverse_cost DOUBLE PRECISION,   -- metres (same for bidirectional)
-    geom         GEOMETRY(LINESTRING, 2180)
+    source       BIGINT NOT NULL,
+    target       BIGINT NOT NULL,
+    cost         DOUBLE PRECISION NOT NULL,   -- metres
+    reverse_cost DOUBLE PRECISION,            -- metres; nullable (one-way edges may use -1)
+    geom         GEOMETRY(LINESTRING, 2180),
+    CONSTRAINT fk_drogi_topo_source
+        FOREIGN KEY (source) REFERENCES drogi_vertices (id)
+        DEFERRABLE INITIALLY DEFERRED,
+    CONSTRAINT fk_drogi_topo_target
+        FOREIGN KEY (target) REFERENCES drogi_vertices (id)
+        DEFERRABLE INITIALLY DEFERRED
 );
 
 CREATE INDEX IF NOT EXISTS idx_drogi_topo_source ON drogi_topo (source);

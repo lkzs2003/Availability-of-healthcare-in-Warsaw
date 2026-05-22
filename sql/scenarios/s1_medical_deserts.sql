@@ -2,6 +2,11 @@
 -- S1 — Pustynie medyczne (Medical deserts) — 7 zapytań
 -- Pytanie: które obszary Warszawy leżą >1 km od najbliższej
 -- przychodni POZ i które dzielnice są najbardziej dotknięte?
+--
+-- Wykorzystuje widok zmaterializowany mv_pokrycie_poz_1km
+-- (definicja: sql/init/04_materialized_views.sql).
+-- Po zmianach w przychodniach POZ wykonaj:
+--   REFRESH MATERIALIZED VIEW mv_pokrycie_poz_1km;
 -- ============================================================
 
 -- Q1: Lista wszystkich przychodni POZ
@@ -18,33 +23,25 @@ SELECT id, nazwa,
 FROM przychodnie_poz;
 
 
--- Q3: Suma buforów — pokryty obszar miasta
-SELECT ST_Union(ST_Buffer(geom, 1000)) AS obszar_pokryty
-FROM przychodnie_poz;
+-- Q3: Suma buforów — pokryty obszar miasta (z MV)
+SELECT geom AS obszar_pokryty
+FROM mv_pokrycie_poz_1km;
 
 
 -- Q4: Fizyczna mapa pustyń medycznych
 --     (kluczowy krok: ST_Difference miasto minus pokrycie)
-WITH pokrycie AS (
-    SELECT ST_Union(ST_Buffer(geom, 1000)) AS g
-    FROM przychodnie_poz
-),
-miasto AS (
+WITH miasto AS (
     SELECT ST_Union(geom) AS g FROM dzielnice
 )
-SELECT ST_Difference(m.g, p.g) AS pustynie
-FROM miasto m, pokrycie p;
+SELECT ST_Difference(m.g, p.geom) AS pustynie
+FROM miasto m, mv_pokrycie_poz_1km p;
 
 
 -- Q5: Powierzchnia pustyni (km²) per dzielnica
-WITH pokrycie AS (
-    SELECT ST_Union(ST_Buffer(geom, 1000)) AS g
-    FROM przychodnie_poz
-),
-pustynie AS (
+WITH pustynie AS (
     SELECT d.id, d.nazwa,
-           ST_Difference(d.geom, p.g) AS pustynia_geom
-    FROM dzielnice d, pokrycie p
+           ST_Difference(d.geom, p.geom) AS pustynia_geom
+    FROM dzielnice d, mv_pokrycie_poz_1km p
 )
 SELECT nazwa,
        ROUND((ST_Area(pustynia_geom) / 1e6)::NUMERIC, 3) AS pustynia_km2
@@ -53,14 +50,10 @@ ORDER BY pustynia_km2 DESC;
 
 
 -- Q6: Procent powierzchni dzielnicy będący pustynią
-WITH pokrycie AS (
-    SELECT ST_Union(ST_Buffer(geom, 1000)) AS g
-    FROM przychodnie_poz
-),
-pustynie AS (
+WITH pustynie AS (
     SELECT d.id, d.nazwa, d.powierzchnia_km2,
-           ST_Difference(d.geom, p.g) AS pustynia_geom
-    FROM dzielnice d, pokrycie p
+           ST_Difference(d.geom, p.geom) AS pustynia_geom
+    FROM dzielnice d, mv_pokrycie_poz_1km p
 )
 SELECT nazwa,
        ROUND((ST_Area(pustynia_geom) / 1e6)::NUMERIC, 3)            AS pustynia_km2,
@@ -73,14 +66,10 @@ ORDER BY pustynia_pct DESC;
 
 -- Q7: Szacunkowa liczba mieszkańców na pustyniach — ranking dzielnic
 --     Założenie: równomierne rozproszenie ludności w dzielnicy
-WITH pokrycie AS (
-    SELECT ST_Union(ST_Buffer(geom, 1000)) AS g
-    FROM przychodnie_poz
-),
-pustynie AS (
+WITH pustynie AS (
     SELECT d.id, d.nazwa, d.powierzchnia_km2,
-           ST_Difference(d.geom, p.g) AS pustynia_geom
-    FROM dzielnice d, pokrycie p
+           ST_Difference(d.geom, p.geom) AS pustynia_geom
+    FROM dzielnice d, mv_pokrycie_poz_1km p
 ),
 statystyki AS (
     SELECT p.nazwa,

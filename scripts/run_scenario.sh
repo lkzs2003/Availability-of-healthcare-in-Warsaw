@@ -29,13 +29,14 @@ if [[ $# -lt 1 ]]; then
     exit 1
 fi
 
-declare -A SCENARIOS=(
-    [1]="s1_medical_deserts.sql"
-    [2]="s2_sor_routing.sql"
-    [3]="s3_new_clinic_location.sql"
-    [4]="s4_pharmacy_density.sql"
-    [5]="s5_nearest_pharmacy.sql"
-    [6]="s6_district_facilities.sql"
+SCENARIOS=(
+    ""
+    "s1_medical_deserts.sql"
+    "s2_sor_routing.sql"
+    "s3_new_clinic_location.sql"
+    "s4_pharmacy_density.sql"
+    "s5_nearest_pharmacy.sql"
+    "s6_district_facilities.sql"
 )
 
 SCENARIO_NUM="$1"

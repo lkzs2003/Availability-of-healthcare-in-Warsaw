@@ -63,13 +63,13 @@ $COMPOSE exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" "$SERVICE" \
 
 echo ""
 echo "=== Step 4: Import with osm2pgrouting (creates ways/ways_vertices_pgr) ==="
+# Password is passed via PGPASSWORD env var (not CLI flag) so it never appears in `ps -ef`
 $COMPOSE exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" "$SERVICE" \
     osm2pgrouting \
         --file     /data/osm/warszawa.osm \
         --conf     /usr/share/osm2pgrouting/mapconfig_for_cars.xml \
         --dbname   "$POSTGRES_DB" \
         --username "$POSTGRES_USER" \
-        --password "$POSTGRES_PASSWORD" \
         --host     localhost \
         --port     5432 \
         --clean
@@ -84,6 +84,9 @@ SELECT id, ST_Transform(the_geom, 2180)
 FROM ways_vertices_pgr;
 
 -- Copy edges; cost recomputed from reprojected geometry (metres).
+-- ST_LineMerge collapses MULTILINESTRING (relations) to LINESTRING when topologically
+-- continuous; ST_Force2D drops any 3D Z/M dimensions OSM may have introduced.
+-- Without these, the hard cast ::geometry(LINESTRING,2180) crashes on multi-part edges.
 INSERT INTO drogi_topo (source, target, cost, reverse_cost, geom)
 SELECT w.source,
        w.target,
@@ -92,8 +95,9 @@ SELECT w.source,
             THEN -1
             ELSE ST_Length(ST_Transform(w.the_geom, 2180))
        END AS reverse_cost,
-       ST_Transform(w.the_geom, 2180)::geometry(LINESTRING, 2180) AS geom
-FROM ways w;
+       ST_Force2D(ST_LineMerge(ST_Transform(w.the_geom, 2180)))::geometry(LINESTRING, 2180) AS geom
+FROM ways w
+WHERE w.source IS NOT NULL AND w.target IS NOT NULL;  -- skip orphan edges to satisfy FK
 
 -- Drop osm2pgrouting staging tables
 DROP TABLE IF EXISTS ways, ways_vertices_pgr, configuration,

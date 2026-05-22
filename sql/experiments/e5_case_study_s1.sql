@@ -4,17 +4,17 @@
 
 DROP MATERIALIZED VIEW IF EXISTS mv_pustynie_medyczne CASCADE;
 
+-- Korzysta z mv_pokrycie_poz_1km (sql/init/04_materialized_views.sql).
+-- Po zmianach w przychodniach POZ wykonaj:
+--   REFRESH MATERIALIZED VIEW mv_pokrycie_poz_1km;
+--   REFRESH MATERIALIZED VIEW mv_pustynie_medyczne;
 CREATE MATERIALIZED VIEW mv_pustynie_medyczne AS
-WITH pokrycie AS (
-    SELECT ST_Union(ST_Buffer(geom, 1000)) AS g
-    FROM przychodnie_poz
-),
-pustynie AS (
+WITH pustynie AS (
     SELECT d.id,
            d.nazwa,
            d.powierzchnia_km2,
-           ST_Multi(ST_Difference(d.geom, p.g))::geometry(MULTIPOLYGON, 2180) AS geom
-    FROM dzielnice d, pokrycie p
+           ST_Multi(ST_Difference(d.geom, p.geom))::geometry(MULTIPOLYGON, 2180) AS geom
+    FROM dzielnice d, mv_pokrycie_poz_1km p
 )
 SELECT p.id,
        p.nazwa,
@@ -45,13 +45,10 @@ ORDER BY ranking;
 -- Mapa ogólnomiejska: jedna geometria pustyń dla całej Warszawy
 DROP MATERIALIZED VIEW IF EXISTS mv_pustynie_globalnie CASCADE;
 CREATE MATERIALIZED VIEW mv_pustynie_globalnie AS
-WITH pokrycie AS (
-    SELECT ST_Union(ST_Buffer(geom, 1000)) AS g FROM przychodnie_poz
-),
-miasto AS (SELECT ST_Union(geom) AS g FROM dzielnice)
+WITH miasto AS (SELECT ST_Union(geom) AS g FROM dzielnice)
 SELECT 1 AS id,
-       ST_Multi(ST_Difference(m.g, p.g))::geometry(MULTIPOLYGON, 2180) AS geom,
-       ROUND((ST_Area(ST_Difference(m.g, p.g)) / 1e6)::NUMERIC, 2) AS pow_km2
-FROM miasto m, pokrycie p;
+       ST_Multi(ST_Difference(m.g, p.geom))::geometry(MULTIPOLYGON, 2180) AS geom,
+       ROUND((ST_Area(ST_Difference(m.g, p.geom)) / 1e6)::NUMERIC, 2) AS pow_km2
+FROM miasto m, mv_pokrycie_poz_1km p;
 
 CREATE INDEX idx_mv_pustynie_globalnie_geom ON mv_pustynie_globalnie USING GiST (geom);

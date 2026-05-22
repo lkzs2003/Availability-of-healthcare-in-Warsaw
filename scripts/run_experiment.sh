@@ -14,8 +14,6 @@ set +a
 : "${POSTGRES_DB:=warszawa_health}"
 : "${POSTGRES_USER:=postgres}"
 : "${POSTGRES_PASSWORD:=postgres}"
-: "${DB_PORT:=5432}"
-: "${DB_HOST:=localhost}"
 
 if [[ $# -lt 1 ]]; then
     cat <<EOF
@@ -57,8 +55,16 @@ case "$1" in
         docker compose down -v
         START=$(date +%s)
         docker compose up -d --build
-        # Wait for healthcheck to pass
+        # Wait for healthcheck to pass — bounded retry (max 120 s) to avoid infinite hang
+        MAX_TRIES=120
+        TRY=0
         until docker compose exec -T db pg_isready -U "$POSTGRES_USER" >/dev/null 2>&1; do
+            TRY=$((TRY + 1))
+            if [[ $TRY -ge $MAX_TRIES ]]; then
+                echo "ERROR: pg_isready did not succeed after ${MAX_TRIES}s — aborting." >&2
+                docker compose logs db | tail -50 >&2
+                exit 1
+            fi
             sleep 1
         done
         END=$(date +%s)
@@ -68,7 +74,7 @@ case "$1" in
     *) echo "Unknown experiment: $1"; exit 1 ;;
 esac
 
-PGPASSWORD="$POSTGRES_PASSWORD" psql \
-    -h "$DB_HOST" -p "$DB_PORT" \
-    -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
-    -f "$SQL"
+# Run E1/E3/E4/E5 inside the container — no host psql dependency,
+# matches the pattern used by E2/E6 and run_scenario.sh
+docker compose exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" db \
+    psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" < "$SQL"

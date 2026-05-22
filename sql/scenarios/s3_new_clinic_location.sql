@@ -2,99 +2,42 @@
 -- S3 — Lokalizacja nowej przychodni POZ — 5 zapytań
 -- Pytanie: gdzie otworzyć nową przychodnię, aby maksymalnie
 -- poprawić dostępność?
+--
+-- Wykorzystuje widok zmaterializowany mv_voronoi_poz
+-- (definicja: sql/init/04_materialized_views.sql).
+-- Po zmianach w przychodniach POZ lub dzielnicach wykonaj:
+--   REFRESH MATERIALIZED VIEW mv_voronoi_poz;
 -- ============================================================
 
--- Q1: Diagram Voronoi dla istniejących przychodni POZ
-WITH pts AS (
-    SELECT ST_Collect(geom) AS geom FROM przychodnie_poz
-),
-envelope AS (
-    SELECT ST_Expand(ST_Envelope(geom), 5000) AS g FROM pts
-)
-SELECT (ST_Dump(ST_VoronoiPolygons(pts.geom, 0, envelope.g))).geom AS strefa_voronoi
-FROM pts, envelope;
+-- Q1: Diagram Voronoi dla istniejących przychodni POZ (z MV — pocięte komórki)
+SELECT cell_id, strefa_clip AS strefa_voronoi
+FROM mv_voronoi_poz
+ORDER BY cell_id;
 
 
 -- Q2: Ranking stref Voronoi według powierzchni
 --     (duża strefa Voronoi = słaba dostępność)
-WITH pts AS (
-    SELECT ST_Collect(geom) AS geom FROM przychodnie_poz
-),
-envelope AS (
-    SELECT ST_Expand(ST_Envelope(geom), 5000) AS g FROM pts
-),
-voronoi AS (
-    SELECT (ST_Dump(ST_VoronoiPolygons(pts.geom, 0, envelope.g))).geom AS strefa
-    FROM pts, envelope
-),
-miasto AS (
-    SELECT ST_Union(geom) AS g FROM dzielnice
-),
-voronoi_clip AS (
-    SELECT ST_Intersection(v.strefa, m.g) AS strefa_clip
-    FROM voronoi v, miasto m
-    WHERE ST_Intersects(v.strefa, m.g)
-)
-SELECT ROUND((ST_Area(strefa_clip) / 1e6)::NUMERIC, 3) AS powierzchnia_km2,
+SELECT cell_id,
+       ROUND((area_m2 / 1e6)::NUMERIC, 3) AS powierzchnia_km2,
        strefa_clip
-FROM voronoi_clip
-ORDER BY ST_Area(strefa_clip) DESC;
+FROM mv_voronoi_poz
+ORDER BY area_m2 DESC;
 
 
 -- Q3: Centroid największej strefy Voronoi jako kandydat
-WITH pts AS (
-    SELECT ST_Collect(geom) AS geom FROM przychodnie_poz
-),
-envelope AS (
-    SELECT ST_Expand(ST_Envelope(geom), 5000) AS g FROM pts
-),
-voronoi AS (
-    SELECT (ST_Dump(ST_VoronoiPolygons(pts.geom, 0, envelope.g))).geom AS strefa
-    FROM pts, envelope
-),
-miasto AS (
-    SELECT ST_Union(geom) AS g FROM dzielnice
-),
-voronoi_clip AS (
-    SELECT ST_Intersection(v.strefa, m.g) AS strefa_clip
-    FROM voronoi v, miasto m
-    WHERE ST_Intersects(v.strefa, m.g)
-),
-top_strefa AS (
-    SELECT strefa_clip
-    FROM voronoi_clip
-    ORDER BY ST_Area(strefa_clip) DESC
-    LIMIT 1
-)
-SELECT ST_Centroid(strefa_clip) AS kandydat_lokalizacja,
-       ROUND((ST_Area(strefa_clip) / 1e6)::NUMERIC, 3) AS pow_km2
-FROM top_strefa;
+SELECT centroid                              AS kandydat_lokalizacja,
+       ROUND((area_m2 / 1e6)::NUMERIC, 3)    AS pow_km2
+FROM mv_voronoi_poz
+ORDER BY area_m2 DESC
+LIMIT 1;
 
 
 -- Q4: Szacunek mieszkańców w buforze 1 km wokół kandydata
 --     (proporcja przecinającej się powierzchni z dzielnicą)
-WITH pts AS (
-    SELECT ST_Collect(geom) AS geom FROM przychodnie_poz
-),
-envelope AS (
-    SELECT ST_Expand(ST_Envelope(geom), 5000) AS g FROM pts
-),
-voronoi AS (
-    SELECT (ST_Dump(ST_VoronoiPolygons(pts.geom, 0, envelope.g))).geom AS strefa
-    FROM pts, envelope
-),
-miasto AS (
-    SELECT ST_Union(geom) AS g FROM dzielnice
-),
-voronoi_clip AS (
-    SELECT ST_Intersection(v.strefa, m.g) AS strefa_clip
-    FROM voronoi v, miasto m
-    WHERE ST_Intersects(v.strefa, m.g)
-),
-kandydat AS (
-    SELECT ST_Buffer(ST_Centroid(strefa_clip), 1000) AS bufor_1km
-    FROM voronoi_clip
-    ORDER BY ST_Area(strefa_clip) DESC
+WITH kandydat AS (
+    SELECT ST_Buffer(centroid, 1000) AS bufor_1km
+    FROM mv_voronoi_poz
+    ORDER BY area_m2 DESC
     LIMIT 1
 )
 SELECT d.nazwa,
@@ -109,42 +52,30 @@ ORDER BY szac_mieszkancy DESC;
 
 
 -- Q5: Top 5 kandydatów z porównaniem (powierzchnia strefy + zasięg 1 km)
-WITH pts AS (
-    SELECT ST_Collect(geom) AS geom FROM przychodnie_poz
-),
-envelope AS (
-    SELECT ST_Expand(ST_Envelope(geom), 5000) AS g FROM pts
-),
-voronoi AS (
-    SELECT (ST_Dump(ST_VoronoiPolygons(pts.geom, 0, envelope.g))).geom AS strefa
-    FROM pts, envelope
-),
-miasto AS (
-    SELECT ST_Union(geom) AS g FROM dzielnice
-),
-voronoi_clip AS (
-    SELECT row_number() OVER (ORDER BY ST_Area(ST_Intersection(v.strefa, m.g)) DESC)
-               AS rank_nr,
-           ST_Intersection(v.strefa, m.g) AS strefa_clip,
-           ST_Centroid(ST_Intersection(v.strefa, m.g))                AS kandydat
-    FROM voronoi v, miasto m
-    WHERE ST_Intersects(v.strefa, m.g)
-    ORDER BY ST_Area(ST_Intersection(v.strefa, m.g)) DESC
+WITH top_kandydaci AS (
+    SELECT row_number() OVER (ORDER BY area_m2 DESC) AS rank_nr,
+           centroid AS kandydat,
+           ST_Buffer(centroid, 1000) AS bufor_1km,
+           area_m2
+    FROM mv_voronoi_poz
+    ORDER BY area_m2 DESC
     LIMIT 5
 ),
 zasieg AS (
-    SELECT vc.rank_nr, vc.kandydat,
-           ROUND((ST_Area(vc.strefa_clip) / 1e6)::NUMERIC, 3) AS pow_strefy_km2,
+    SELECT tk.rank_nr, tk.kandydat,
+           ROUND((tk.area_m2 / 1e6)::NUMERIC, 3) AS pow_strefy_km2,
            -- ROUND AFTER SUM to avoid accumulating rounding errors
-           -- Rounding before summing can lose up to 0.5 per district × 18 districts = ±9 person error
+           -- (rounding before summing can lose up to 0.5 per district × 18 districts = ±9 person error)
            COALESCE(ROUND(
-               SUM(ST_Area(ST_Intersection(d.geom, ST_Buffer(vc.kandydat, 1000)))
+               SUM(ST_Area(ST_Intersection(d.geom, tk.bufor_1km))
                    / ST_Area(d.geom) * dd.ludnosc)::NUMERIC
            ), 0) AS szac_mieszkancy_1km
-    FROM voronoi_clip vc
-    LEFT JOIN dzielnice d ON ST_Intersects(d.geom, ST_Buffer(vc.kandydat, 1000))
-    LEFT JOIN demografia_dzielnice dd ON dd.dzielnica_id = d.id AND dd.rok = 2023
-    GROUP BY vc.rank_nr, vc.kandydat, vc.strefa_clip
+    FROM top_kandydaci tk
+    LEFT JOIN dzielnice d
+        ON ST_Intersects(d.geom, tk.bufor_1km)
+    LEFT JOIN demografia_dzielnice dd
+        ON dd.dzielnica_id = d.id AND dd.rok = 2023
+    GROUP BY tk.rank_nr, tk.kandydat, tk.area_m2
 )
 SELECT rank_nr,
        ST_X(kandydat) AS x_pl92,

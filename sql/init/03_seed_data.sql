@@ -59,21 +59,17 @@ voronoi_raw AS (
     ))).geom AS cell
     FROM centroid_pts cp
 ),
-voronoi_clipped AS (
-    SELECT ST_MakeValid(ST_Intersection(v.cell, wb.geom)) AS poly
-    FROM voronoi_raw v, warszawa_boundary wb
-    WHERE ST_Intersects(v.cell, wb.geom)
-),
-matched AS (
-    SELECT cp.nazwa, vc.poly
+matched_raw AS (
+    -- Match each centroid to its raw unclipped Voronoi cell first (stable 1-to-1 matching)
+    SELECT cp.nazwa, vr.cell
     FROM centroid_pts cp
-    JOIN voronoi_clipped vc ON ST_Contains(vc.poly, cp.geom)
+    JOIN voronoi_raw vr ON ST_Contains(vr.cell, cp.geom)
 )
 INSERT INTO dzielnice (nazwa, powierzchnia_km2, geom)
-SELECT nazwa,
-       ROUND((ST_Area(poly) / 1e6)::NUMERIC, 3),
-       ST_Multi(ST_CollectionExtract(poly, 3))  -- keep only polygons
-FROM matched;
+SELECT mr.nazwa,
+       ROUND((ST_Area(ST_Intersection(mr.cell, wb.geom)) / 1e6)::NUMERIC, 3) AS powierzchnia_km2,
+       ST_Multi(ST_CollectionExtract(ST_MakeValid(ST_Intersection(mr.cell, wb.geom)), 3)) AS geom
+FROM matched_raw mr, warszawa_boundary wb;
 
 
 -- -----------------------------------------------------------
@@ -197,14 +193,15 @@ INSERT INTO apteki (nazwa, adres, geom) VALUES
 -- 6. Road network — synthetic 5 km grid covering Warsaw
 --    Cost = segment length in metres; 5000 m at 50 km/h ~ 6 min
 --    Node ID: row * 11 + col + 1  (col in 0..10, row in 0..7)
+--    BBOX origin (x0, y0) is read from warszawa_bbox (single source of truth).
 -- -----------------------------------------------------------
 DO $$
 DECLARE
+    step   CONSTANT NUMERIC := 5000;
     nx     CONSTANT INTEGER := 11;
     ny     CONSTANT INTEGER := 8;
-    x0     CONSTANT NUMERIC := 630000;
-    y0     CONSTANT NUMERIC := 490000;
-    step   CONSTANT NUMERIC := 5000;
+    x0     NUMERIC;
+    y0     NUMERIC;
     eid    BIGINT := 1;
     r      INTEGER;
     c      INTEGER;
@@ -213,6 +210,7 @@ DECLARE
     x1     NUMERIC; y1 NUMERIC;
     x2     NUMERIC; y2 NUMERIC;
 BEGIN
+    SELECT xmin, ymin INTO x0, y0 FROM warszawa_bbox;
     -- Vertices
     FOR r IN 0..(ny - 1) LOOP
         FOR c IN 0..(nx - 1) LOOP

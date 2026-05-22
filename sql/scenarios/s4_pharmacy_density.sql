@@ -37,8 +37,13 @@ ORDER BY mieszkancy_na_apteke DESC NULLS FIRST;
 
 
 -- Q4: Ranking z funkcjami okna (RANK, NTILE — kwartyle)
+--
+-- IMPORTANT: dzielnice z 0 aptek są CELOWO wyłączone z obliczeń NTILE.
+-- W przeciwnym razie NULL (powstały z dzielenia przez 0) trafiałby w kwartyl 4
+-- przy DESC NULLS LAST → „najlepsza dostępność" przy braku aptek = logiczny bug.
+-- Dzielnice z 0 aptek są zwracane osobno z kwartyl = 0 (kategoria specjalna).
 WITH wskazniki AS (
-    SELECT d.nazwa,
+    SELECT d.id, d.nazwa,
            COUNT(a.id)                                AS liczba_aptek,
            dd.ludnosc,
            dd.ludnosc::NUMERIC / NULLIF(COUNT(a.id), 0) AS mieszkancy_na_apteke
@@ -47,13 +52,28 @@ WITH wskazniki AS (
     JOIN  demografia_dzielnice dd
         ON dd.dzielnica_id = d.id AND dd.rok = 2023
     GROUP BY d.id, d.nazwa, dd.ludnosc
+),
+ranked AS (
+    SELECT nazwa,
+           liczba_aptek,
+           ROUND(mieszkancy_na_apteke, 0)                       AS mieszkancy_na_apteke,
+           RANK()   OVER (ORDER BY mieszkancy_na_apteke DESC)    AS rank_dostepnosc,
+           NTILE(4) OVER (ORDER BY mieszkancy_na_apteke DESC)    AS kwartyl
+           -- kwartyl=1 → najgorsza dostępność (najwięcej mieszk. na aptekę)
+           -- kwartyl=4 → najlepsza dostępność
+    FROM wskazniki
+    WHERE liczba_aptek > 0
+),
+brak_aptek AS (
+    SELECT nazwa,
+           liczba_aptek,
+           NULL::NUMERIC AS mieszkancy_na_apteke,
+           NULL::BIGINT  AS rank_dostepnosc,
+           0             AS kwartyl  -- 0 = specjalna kategoria „brak aptek w dzielnicy"
+    FROM wskazniki
+    WHERE liczba_aptek = 0
 )
-SELECT nazwa,
-       liczba_aptek,
-       ROUND(mieszkancy_na_apteke, 0)                AS mieszkancy_na_apteke,
-       RANK()  OVER (ORDER BY mieszkancy_na_apteke DESC NULLS LAST) AS rank_dostepnosc,
-       NTILE(4) OVER (ORDER BY mieszkancy_na_apteke DESC NULLS LAST) AS kwartyl
-       -- kwartyl=1 → najgorsza dostępność (najwięcej mieszk. na aptekę)
-       -- kwartyl=4 → najlepsza dostępność
-FROM wskazniki
-ORDER BY rank_dostepnosc;
+SELECT * FROM ranked
+UNION ALL
+SELECT * FROM brak_aptek
+ORDER BY kwartyl DESC NULLS LAST, rank_dostepnosc;

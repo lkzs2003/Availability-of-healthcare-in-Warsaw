@@ -13,16 +13,18 @@ WITH hospital_vertices AS (
 reachability AS (
     SELECT pgd.node AS vertex_id, MIN(pgd.agg_cost) AS min_koszt_m
     FROM pgr_drivingDistance(
-        'SELECT id, source, target, cost FROM drogi_topo',
+        'SELECT id, source, target, cost, reverse_cost FROM drogi_topo',
         ARRAY(SELECT vertex_id FROM hospital_vertices)::BIGINT[],
-        25000, false
+        25000, true
     ) pgd
     GROUP BY pgd.node
 ),
+bbox AS (SELECT * FROM warszawa_bbox),
 grid AS (
     SELECT ST_SetSRID(ST_Point(x, y), 2180) AS geom
-    FROM generate_series(630000, 680000, 500) x,
-         generate_series(490000, 525000, 500) y
+    FROM bbox b,
+         LATERAL generate_series(b.xmin::INT, b.xmax::INT, 500) x,
+         LATERAL generate_series(b.ymin::INT, b.ymax::INT, 500) y
 )
 SELECT COUNT(*) AS komorki_z_czasem
 FROM grid g
@@ -43,16 +45,18 @@ WITH hospital_vertices AS (
 reachability AS (
     SELECT pgd.node AS vertex_id, MIN(pgd.agg_cost) AS min_koszt_m
     FROM pgr_drivingDistance(
-        'SELECT id, source, target, cost FROM drogi_topo',
+        'SELECT id, source, target, cost, reverse_cost FROM drogi_topo',
         ARRAY(SELECT vertex_id FROM hospital_vertices)::BIGINT[],
-        25000, false
+        25000, true
     ) pgd
     GROUP BY pgd.node
 ),
+bbox AS (SELECT * FROM warszawa_bbox),
 grid AS (
     SELECT ST_SetSRID(ST_Point(x, y), 2180) AS geom
-    FROM generate_series(630000, 680000, 1000) x,
-         generate_series(490000, 525000, 1000) y
+    FROM bbox b,
+         LATERAL generate_series(b.xmin::INT, b.xmax::INT, 1000) x,
+         LATERAL generate_series(b.ymin::INT, b.ymax::INT, 1000) y
 )
 SELECT COUNT(*) AS komorki_z_czasem
 FROM grid g

@@ -8,7 +8,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     ports:
-      - "${DB_PORT:-5432}:5432"
+      # Bind to loopback only — DB never accessible from LAN/internet
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./sql/init:/docker-entrypoint-initdb.d
@@ -28,7 +29,8 @@ services:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@localhost.pl}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
     ports:
-      - "${PGADMIN_PORT:-8080}:80"
+      # Bind to loopback only — pgAdmin never accessible from LAN/internet
+      - "127.0.0.1:${PGADMIN_PORT:-8080}:80"
     depends_on:
       db:
         condition: service_healthy

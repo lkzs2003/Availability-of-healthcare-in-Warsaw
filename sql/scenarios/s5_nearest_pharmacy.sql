@@ -49,5 +49,4 @@ BEGIN;
 
     ROLLBACK;  -- Cancel the DROP, index is intact
 
--- Krok 3c: index still exists; optionally re-analyze if needed
-ANALYZE apteki;
+-- (ROLLBACK already restored the index and pg_class stats — no ANALYZE needed.)

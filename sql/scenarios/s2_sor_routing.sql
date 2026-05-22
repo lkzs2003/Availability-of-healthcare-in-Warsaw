@@ -51,8 +51,8 @@ vertex_szpitala AS (
 SELECT ST_ConcaveHull(ST_Collect(v.geom), 0.85) AS izochrona_10min
 FROM vertex_szpitala vs,
      pgr_drivingDistance(
-         'SELECT id, source, target, cost FROM drogi_topo',
-         vs.vid, 8333, false
+         'SELECT id, source, target, cost, reverse_cost FROM drogi_topo',
+         vs.vid, 8333, true
      ) pgd
 JOIN drogi_vertices v ON v.id = pgd.node;
 
@@ -76,9 +76,9 @@ reachable AS (
            END AS strefa
     FROM hospital_vertices hv,
          pgr_drivingDistance(
-             'SELECT id, source, target, cost FROM drogi_topo',
+             'SELECT id, source, target, cost, reverse_cost FROM drogi_topo',
              ARRAY(SELECT vertex_id FROM hospital_vertices)::BIGINT[],
-             12500, false
+             12500, true
          ) pgd
     WHERE pgd.start_vid = hv.vertex_id
 )
@@ -93,33 +93,19 @@ ORDER BY szpital_id, strefa;
 
 -- Q5: Siatka 500 m × 500 m — czas dojazdu do najbliższego SOR
 --
---     Odwrócona strategia: dla każdego szpitala SOR uruchom
---     pgr_drivingDistance z budżetem 30 min (25 000 m). Zwraca
---     to (vertex, min_koszt) — jedno wywołanie zamiast N*M.
---     Następnie do każdej komórki siatki dopasowujemy najbliższy
---     vertex i bierzemy jego minimalny koszt do dowolnego SOR.
-WITH hospital_vertices AS (
-    SELECT v.id::BIGINT AS vertex_id
-    FROM szpitale_sor s
-    CROSS JOIN LATERAL (
-        SELECT id FROM drogi_vertices ORDER BY geom <-> s.geom LIMIT 1
-    ) v
-),
-reachability AS (
-    SELECT pgd.node AS vertex_id, MIN(pgd.agg_cost) AS min_koszt_m
-    FROM pgr_drivingDistance(
-        'SELECT id, source, target, cost FROM drogi_topo',
-        ARRAY(SELECT vertex_id FROM hospital_vertices)::BIGINT[],
-        25000, false
-    ) pgd
-    GROUP BY pgd.node
-),
+--     Korzysta z mv_sor_reachability (sql/init/04_materialized_views.sql),
+--     który raz wylicza pgr_drivingDistance z budżetem 25 km dla wszystkich SOR.
+--     Po zmianach w szpitalach/drogach wykonaj:
+--       REFRESH MATERIALIZED VIEW mv_sor_reachability;
+--     Bbox siatki czytany z warszawa_bbox (single source of truth).
+WITH bbox AS (SELECT * FROM warszawa_bbox),
 grid AS (
     SELECT
         ST_SetSRID(ST_Point(x, y), 2180) AS geom,
         row_number() OVER () AS cell_id
-    FROM generate_series(630000, 680000, 500) x,
-         generate_series(490000, 525000, 500) y
+    FROM bbox b,
+         LATERAL generate_series(b.xmin::INT, b.xmax::INT, 500) x,
+         LATERAL generate_series(b.ymin::INT, b.ymax::INT, 500) y
 ),
 grid_vertices AS (
     SELECT g.cell_id, g.geom, v.id AS vertex_id,
@@ -135,31 +121,18 @@ SELECT gv.cell_id, gv.geom,
        (r.min_koszt_m + gv.snap_m)::INT                     AS koszt_total_m,
        ROUND(((r.min_koszt_m + gv.snap_m) / 833.3)::NUMERIC, 1) AS czas_min
 FROM grid_vertices gv
-LEFT JOIN reachability r ON r.vertex_id = gv.vertex_id
+LEFT JOIN mv_sor_reachability r ON r.vertex_id = gv.vertex_id
 ORDER BY czas_min DESC NULLS FIRST;
 
 
 -- Q6: Komórki z czasem dojazdu >15 min — obszary krytyczne
-WITH hospital_vertices AS (
-    SELECT v.id::BIGINT AS vertex_id
-    FROM szpitale_sor s
-    CROSS JOIN LATERAL (
-        SELECT id FROM drogi_vertices ORDER BY geom <-> s.geom LIMIT 1
-    ) v
-),
-reachability AS (
-    SELECT pgd.node AS vertex_id, MIN(pgd.agg_cost) AS min_koszt_m
-    FROM pgr_drivingDistance(
-        'SELECT id, source, target, cost FROM drogi_topo',
-        ARRAY(SELECT vertex_id FROM hospital_vertices)::BIGINT[],
-        25000, false
-    ) pgd
-    GROUP BY pgd.node
-),
+--     (ten sam pipeline siatki + MV reachability — tylko inny filtr)
+WITH bbox AS (SELECT * FROM warszawa_bbox),
 grid AS (
     SELECT ST_SetSRID(ST_Point(x, y), 2180) AS geom
-    FROM generate_series(630000, 680000, 500) x,
-         generate_series(490000, 525000, 500) y
+    FROM bbox b,
+         LATERAL generate_series(b.xmin::INT, b.xmax::INT, 500) x,
+         LATERAL generate_series(b.ymin::INT, b.ymax::INT, 500) y
 ),
 grid_vertices AS (
     SELECT g.geom, v.id AS vertex_id,
@@ -175,6 +148,6 @@ SELECT gv.geom,
        (r.min_koszt_m + gv.snap_m)::INT                    AS koszt_total_m,
        ROUND(((r.min_koszt_m + gv.snap_m) / 833.3)::NUMERIC, 1) AS czas_min
 FROM grid_vertices gv
-LEFT JOIN reachability r ON r.vertex_id = gv.vertex_id
+LEFT JOIN mv_sor_reachability r ON r.vertex_id = gv.vertex_id
 WHERE (r.min_koszt_m IS NULL) OR (r.min_koszt_m + gv.snap_m > 12500)  -- > 15 min @ 50 km/h
 ORDER BY czas_min DESC NULLS FIRST;

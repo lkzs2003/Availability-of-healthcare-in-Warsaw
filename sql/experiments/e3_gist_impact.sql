@@ -13,14 +13,15 @@ CREATE TABLE bench_points (
 
 -- 100 000 punktów losowych wewnątrz bbox Warszawy (deterministic via setseed)
 -- setseed(0.42) ensures reproducible results across runs for fair EXPLAIN ANALYZE comparison
+-- BBOX z warszawa_bbox (sql/init/02_schema.sql) — pojedyncze źródło prawdy.
 SELECT setseed(0.42);
 
 INSERT INTO bench_points (geom)
 SELECT ST_SetSRID(ST_Point(
-    630000 + random() * 50000,
-    490000 + random() * 35000
+    b.xmin + random() * (b.xmax - b.xmin),
+    b.ymin + random() * (b.ymax - b.ymin)
 ), 2180)
-FROM generate_series(1, 100000);
+FROM warszawa_bbox b, generate_series(1, 100000);
 
 ANALYZE bench_points;
 
