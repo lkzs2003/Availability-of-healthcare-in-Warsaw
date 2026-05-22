@@ -34,7 +34,7 @@ case "$1" in
     1) SQL="${ROOT_DIR}/sql/experiments/e1_data_import.sql" ;;
     2)
         echo "=== E2: Running all 6 scenarios ==="
-        echo "⚠️  NOTE: S2 (SOR routing) uses synthetic 5 km grid (88 vertices)."
+        echo "NOTE: S2 (SOR routing) uses synthetic 5 km grid (88 vertices)."
         echo "         Results are unreliable until OSM import is run."
         echo "         For realistic S2 output: ./scripts/import_osm.sh"
         echo ""

@@ -289,17 +289,18 @@ def fetch_sor() -> Path:
     Then de-dupe by name. NOT all amenity=hospital have SOR — Warsaw has
     ~13 SOR facilities out of ~40 hospitals.
     """
-    log("Fetching SOR hospitals (OSM: emergency=yes OR SOR in name OR speciality=emergency) ...")
+    log("Fetching SOR hospitals (OSM amenity=hospital + emergency=yes) ...")
+    # NOTE: OSM tagging coverage for emergency=yes is patchy — Warsaw has ~13 SOR
+    # facilities in reality but only a subset are properly tagged. The official
+    # complete list is on https://rpwdl.ezdrowie.gov.pl (requires JSON export auth).
+    # For this project we accept OSM data as-is and document the gap.
     ql = (
-        '[out:json][timeout:180];'
-        'relation["name"="Warszawa"]["admin_level"="6"];'
-        'map_to_area->.w;'
+        '[out:json][timeout:90];'
+        'area["name"="Warszawa"]["admin_level"="6"]->.w;'
         '('
-        '  nwr["amenity"="hospital"]["emergency"="yes"](area.w);'
-        '  nwr["amenity"="hospital"]["name"~"SOR",i](area.w);'
-        '  nwr["amenity"="hospital"]["name"~"Oddział Ratunkow",i](area.w);'
-        '  nwr["amenity"="hospital"]["healthcare:speciality"~"emergency"](area.w);'
-        '  nwr["healthcare"="hospital"]["emergency"="yes"](area.w);'
+        '  node["amenity"="hospital"]["emergency"="yes"](area.w);'
+        '  way["amenity"="hospital"]["emergency"="yes"](area.w);'
+        '  relation["amenity"="hospital"]["emergency"="yes"](area.w);'
         ');'
         'out center tags;'
     )

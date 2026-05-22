@@ -1,5 +1,6 @@
 -- QGIS layer for S2 — izochrony 5/10/15 min dla wszystkich SOR
--- Geometry column: geom, SRID: 2180, Geometry type: Polygon
+-- Geometry column: geom, SRID: 2180, Geometry type: Geometry (Polygon/Point mix
+-- — z syntetycznym grafem część stref kolapsuje do punktu; z OSM-em wszystkie poligony)
 -- Style suggestion: Graduated by `strefa`, palette RdYlGn reversed
 WITH hospital_vertices AS (
     SELECT DISTINCT ON (s.id) s.id AS szpital_id, s.nazwa, v.id AS vertex_id
@@ -26,9 +27,10 @@ reachable AS (
 )
 SELECT row_number() OVER () AS id,
        szpital_id, nazwa, strefa,
-       ST_ConcaveHull(ST_Collect(v.geom), 0.85)::geometry(POLYGON, 2180) AS geom
+       ST_ConcaveHull(ST_Collect(v.geom), 0.85) AS geom  -- typ ogólny Geometry
 FROM reachable r
 JOIN drogi_vertices v ON v.id = r.node
 WHERE strefa IS NOT NULL
 GROUP BY szpital_id, nazwa, strefa
+HAVING COUNT(*) >= 3  -- ≥3 wierzchołki → ConcaveHull zwraca polygon, nie point/line
 ORDER BY szpital_id, strefa;

@@ -5,7 +5,7 @@
 -- Koszt w drogi_topo = długość segmentu w metrach
 -- 50 km/h → 1 min = 833 m → 10 min = 8 333 m
 --
--- ⚠️  LIMITATION: The synthetic 5 km grid (seed data) has only 88 vertices.
+-- LIMITATION: The synthetic 5 km grid (seed data) has only 88 vertices.
 --     Five hospitals snapped via KNN will often collapse to shared vertices.
 --     This breaks isochrone granularity in Q4 and makes Q5 unreliable.
 --     For meaningful results, run: ./scripts/import_osm.sh
