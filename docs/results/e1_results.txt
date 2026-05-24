@@ -1,0 +1,22 @@
+=== E1 validation ===
+        tabela        | liczba | invalid_geom | srids | srid 
+----------------------+--------+--------------+-------+------
+ dzielnice            |     18 |            0 |     1 | 2180
+ demografia_dzielnice |     18 |            0 |     0 |     
+ przychodnie_poz      |    231 |            0 |     1 | 2180
+ szpitale_sor         |      4 |            0 |     1 | 2180
+ apteki               |    586 |            0 |     1 | 2180
+ drogi_vertices       |     88 |            0 |     1 | 2180
+ drogi_topo           |    157 |            0 |     1 | 2180
+(7 rows)
+
+         test          | pary_z_naklady 
+-----------------------+----------------
+ overlapping_districts |              1
+(1 row)
+
+        metric        | component | vertices_in_component 
+----------------------+-----------+-----------------------
+ connected_components |         1 |                    88
+(1 row)
+
