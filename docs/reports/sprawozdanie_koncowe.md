@@ -159,6 +159,18 @@ Baza zawiera **7 tabel bazowych** i **3 zmaterializowane widoki** z automatyczny
 
 Graf jest **w pełni spójny** — istnieje pojedyncza komponenta o 88 wierzchołkach. Każdy SOR jest osiągalny z każdej krawędzi sieci.
 
+## Walidacja liczności placówek — porównanie ze źródłami zewnętrznymi
+
+Liczby w bazie zostały skonfrontowane z dwoma niezależnymi rejestrami publicznymi.
+
+| Kategoria | W bazie (po V1.1+V1.2) | UM Warszawa <https://zdrowie.um.warszawa.pl> | Komentarz |
+|---|---:|---:|---|
+| Przychodnie POZ | **231** | **~110** (przychodnie *miejskie*, SPZOZ) | Lista UM obejmuje wyłącznie placówki publiczne; baza projektowa korzysta z OSM `healthcare=clinic`, który dodatkowo łapie NZOZ-y, sieci komercyjne (Lux Med, Medicover, Carolina) oraz wybrane poradnie specjalistyczne. Wartość 231 to **suma wszystkich rodzajów przychodni z OSM**, nie tylko miejskich POZ. |
+| Szpitale z SOR | **14** | **13** (lista szpitali miejskich UM) | Strona UM wymienia 13 placówek; lista V1.1 (NFZ + RPWDL) dodaje 1 placówkę resortową (Szpital Szaserów MON) → 14 SOR. Pełna zgodność z rejestrem branżowym. |
+| Apteki | **582** | (brak listy UM) | Walidacja na podstawie liczby aptek z NFZ ~570–600 w granicach miasta. |
+
+**Wniosek**: liczba 231 nie jest błędem — to świadome użycie OSM jako szerokiego proxy. Realne POZ miejskie ≈ 110, a różnica (~120 wpisów) to NZOZ-y i kliniki specjalistyczne. Dla potrzeb scenariusza S6 ("ile placówek w dzielnicy") szerszy zbiór jest poprawny analitycznie, ponieważ mieszkaniec korzysta także z prywatnych POZ na kontrakcie NFZ.
+
 ## Mapa przeglądowa
 
 ![Granice 18 dzielnic Warszawy + lokalizacje placówek (POZ + apteki + SOR)](../img/overview.png){width=85%}
@@ -540,6 +552,10 @@ EXPLAIN (ANALYZE, BUFFERS) SELECT ...; -- Execution Time: 40.667 ms (BEZ indeksu
 ROLLBACK;
 ```
 
+### Wizualizacja
+
+![S5 — Pałac Kultury (czerwony) + 3 najbliższe apteki (KNN `<->`) w promieniu 340 m](../img/s5_najblizsze_apteki.png){width=85%}
+
 ### Komentarz analityczny
 
 - Przy N=582 narzut planera dominuje koszt — różnica zaledwie ~3 ms.
@@ -616,10 +632,11 @@ SELECT d.nazwa AS dzielnica,
 
 ### Komentarz analityczny
 
-- **Wilanów ma 1 POZ na 46 000 mieszkańców** — to **12x gorzej** niż średnia warszawska (~3 800).
+- **Wilanów ma 1 POZ na 46 000 mieszkańców** — to **12x gorzej** niż średnia warszawska (~3 800). Uwaga: liczba 1 dotyczy POZ wykrytych w OSM `healthcare=clinic`; rejestr UM wymienia kilka dodatkowych przychodni miejskich w tej dzielnicy. Faktyczna proporcja może być więc niższa, ale Wilanów pozostaje najsłabiej obsługiwany.
 - **Ursus**: 2 POZ na 66 000 -> 33 000/POZ. Razem z Białołęką (17 111), Bielanami (26 200) i Targówkiem (24 800) tworzą "ścianę niedostępności" peryferii.
 - **8 dzielnic z 0 SOR**: Bemowo, Białołęka, Rembertów, Ursus, Wesoła, Wilanów, Włochy, Żoliborz — to **47 % powierzchni miasta** bez własnego SOR.
 - Najlepiej obsługiwane: Ochota (3 SOR), Mokotów + Wawer (po 2). Pozostałe 7 dzielnic mają po 1 SOR.
+- **Walidacja zewnętrzna SOR**: 14 SOR w bazie zgodne z 13 placówkami listowanymi na <https://zdrowie.um.warszawa.pl> (lista UM nie zawiera Szpitala Szaserów MON, który dysponuje SOR cywilnym).
 
 \newpage
 
@@ -726,7 +743,7 @@ QGIS automatycznie ustawi CRS projektu na **EPSG:2180** (wszystkie warstwy zgodn
 |---|---|---|---|
 | Równomierny model ludności w dzielnicy | S1 Q7, S3 Q4 — zawyżona pustynia w dzielnicach z lasami | jawne zgłoszenie + waga gęstości | Integracja CORINE Land Cover + siatka spisowa GUGiK 1 km |
 | Siatka drogowa 5 km (seed) | rozdzielczość izochron S2 = 5 km | `import_osm.sh` -> 10⁵ krawędzi z Geofabrik | jw. + waga `cost = ST_Length / V_avg(klasa drogi)` |
-| POZ z OSM `healthcare=clinic` | niepełny RPWDL (proxy) | best-effort + jawne oznaczenie | parsowanie RPWDL HTML (sesja autoryzowana) |
+| POZ z OSM `healthcare=clinic` (231 wpisów) | szerszy zbiór niż lista UM Warszawa (110 miejskich POZ); obejmuje NZOZ-y + kliniki specjalistyczne | best-effort + jawne oznaczenie w §3 | parsowanie RPWDL HTML (sesja autoryzowana) z filtrem `typ_placowki = 'POZ'` |
 | 91 aptek poza granicami | bbox Overpass > kontur miasta | V1.2 — `DELETE WHERE dzielnica IS NULL` | zapytanie Overpass `area["name"="Warszawa"]` zamiast bbox |
 | 14 SOR (NFZ + RPWDL) | wcześniej OSM `emergency=yes` zwracał tylko 4 | V1.1 — TRUNCATE + INSERT z weryfikowanej listy | aktualizacja z `dane.gov.pl` (NFZ dataset) |
 
