@@ -79,7 +79,13 @@ out body geom;
 | Żoliborz       | 071412865198 |  58,625   |
 | **SUMA**       |              | **1,861,599** |
 
-Oficjalna populacja Warszawy 2023 wg GUS: **1 861 599** — **exact match**.
+Oficjalna populacja Warszawy 2023 wg GUS: **1 861 599** (wynik wykonania `./scripts/import_real_data.sh`).
+
+> **Uwaga — migracja V1.1**: skrypt `sql/migrations/V1.1__enrich_healthcare_and_demographics.sql`
+> **nadpisuje** populację zaokrąglonymi wartościami zgodnymi ze specyfikacją zadania
+> (Bemowo 125 000, Białołęka 154 000, …, Żoliborz 56 000 — suma **1 812 000**).
+> Sprawozdanie końcowe (`docs/reports/sprawozdanie_koncowe.md`) operuje na wartościach
+> **po V1.1** (1 812 000), bo to one są aktualnym stanem bazy używanym przez wszystkie scenariusze.
 
 **Cache**: `data/cache/bdl_*.json` (18 plików, łącznie <100 KB).
 
@@ -95,7 +101,9 @@ area["name"="Warszawa"]["admin_level"="6"]->.w;
 );
 out center tags;
 ```
-**Co dostajemy**: 586 aptek w Warszawie z atrybutami:
+**Co dostajemy**: ~670 aptek z bbox Warszawy → po `import_apteki.sh` 673 → po V1.2 cleanup
+(usunięcie 91 placówek poza granicą miasta) zostaje **582 aptek** w Warszawie.
+Atrybuty:
 - `name` lub `brand` (Apteka Gemini, DOZ, SuperPharm, …)
 - `addr:street + addr:housenumber`
 - Opcjonalnie `ref:csioz` (mapowanie na CSIOZ — Centrum Systemów Informacyjnych Ochrony Zdrowia)
@@ -140,7 +148,11 @@ out center tags;
 ```
 **Co dostajemy**: ~4 szpitale z taggiem `emergency=yes`.
 
-**ZNANA LIMITACJA**: Warszawa ma ~13 SOR w rzeczywistości, ale OSM tagging jest niespójny — wiele szpitali nie ma `emergency=yes`. Pełna lista w **NFZ** (dane.gov.pl) i **RPWDL**. W tym buildzie przyjmujemy OSM bez retuszu — udokumentowane w README.
+**ZNANA LIMITACJA**: Warszawa ma ~13–14 SOR w rzeczywistości, ale OSM tagging jest niespójny — wiele szpitali nie ma `emergency=yes`.
+
+> **Migracja V1.1 koryguje ten brak**: TRUNCATE + INSERT pełnej, zweryfikowanej listy
+> **14 SOR** (zob. `sql/migrations/V1.1__enrich_healthcare_and_demographics.sql`,
+> KROK 4). Aktualny stan bazy = 14 SOR (NFZ + RPWDL).
 
 **Cache**: `data/cache/osm_sor.json` (~20 KB).
 

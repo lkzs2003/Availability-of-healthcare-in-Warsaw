@@ -60,10 +60,10 @@ Po tym:
 | Tabela | Liczba | Źródło | Walidacja |
 |---|---:|---|---|
 | `dzielnice` | 18 | OSM `admin_level=9` | 516.8 km² = 99.9% PRG |
-| `demografia_dzielnice` | 18 | GUS BDL `var-id=72305` (2023) | **1,861,599 = exact match** GUS |
-| `apteki` | 586 | OSM `amenity=pharmacy` | 0 invalid geometry |
+| `demografia_dzielnice` | 18 | GUS BDL `var-id=72305` (2023) | GUS: 1 861 599 / po V1.1: **1 812 000** |
+| `apteki` | 582 | OSM `amenity=pharmacy` + V1.2 cleanup | 91 outsiderów (Marki/Pruszków) usunięte |
 | `przychodnie_poz` | 231 | OSM `healthcare=clinic` | 0 invalid geometry |
-| `szpitale_sor` | 4 | OSM `emergency=yes` | OSM tagging niespójny — patrz limitacje |
+| `szpitale_sor` | **14** | NFZ + RPWDL (migracja V1.1) | TRUNCATE + INSERT zweryfikowanej listy |
 | `drogi_topo` | 157 (seed) / ~10^5 (OSM) | Synthetic 5 km grid / Geofabrik OSM | 1 connected component |
 
 ---
@@ -102,7 +102,8 @@ Po tym:
 │   ├── run_scenario.sh            # ./scripts/run_scenario.sh <1-6>
 │   ├── run_experiment.sh          # ./scripts/run_experiment.sh <1-6>  (E2/E6 specjalne)
 │   ├── import_osm.sh              # OSM road network -> osm2pgrouting -> drogi_topo
-│   ├── import_real_data.sh        # GUS+OSM real data -> 18 dzielnic + 586 aptek + ...
+│   ├── import_real_data.sh        # GUS+OSM real data -> 18 dzielnic + ~670 aptek + ...
+│   ├── import_apteki.sh           # Overpass API -> tylko apteki (V1.1 stack)
 │   └── lib/
 │       └── fetch_real_data.py     # implementacja fetcher'a (stdlib + curl)
 │
@@ -117,7 +118,7 @@ Po tym:
 │       └── s6_dzielnice_placowki.sql
 │
 ├── docs/
-│   ├── SPRAWOZDANIE.md            # SPRAWOZDANIE KOŃCOWE (5 wymaganych sekcji)
+│   ├── reports/sprawozdanie_koncowe.md  # SPRAWOZDANIE KOŃCOWE (5 wymaganych sekcji)
 │   ├── ARCHITECTURE.md            # diagram warstw, kolejność init, optymalizacje
 │   ├── DATA_SOURCES.md            # endpointy + cache + atrybucja
 │   ├── SCENARIOS.md               # szczegółowy opis każdego scenariusza
@@ -176,7 +177,7 @@ Wszystkie `ST_Distance`, `ST_DWithin`, `ST_Buffer` zwracają wynik w metrach bez
 Triggery CONSTRAINT DEFERRED auto-refresh po commit.
 
 ### 3. S2 odwrócona strategia routingu
-Zamiast naiwnego `pgr_dijkstra` z każdej z ~7 000 komórek siatki (O(N × graf)), uruchamiamy `pgr_drivingDistance` z 4 SOR z budżetem 25 km (O(H × graf)). **Speedup ~1700x**.
+Zamiast naiwnego `pgr_dijkstra` z każdej z ~7 000 komórek siatki (O(N × graf)), uruchamiamy `pgr_drivingDistance` z ARRAY 14 SOR-vertex-ów z budżetem 25 km (O(H × graf)). Wynik (45 wierszy) materializujemy w `mv_sor_reachability`.
 
 ### 4. S6 scalar subqueries zamiast triple LEFT JOIN
 Eliminuje multiplikatywny wybuch wierszy O(d×n×m×k) -> O(d×(n+m+k)).
@@ -199,7 +200,7 @@ Pełne uzasadnienia w [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Dokumentacja
 
-- **[`docs/SPRAWOZDANIE.md`](docs/SPRAWOZDANIE.md)** — **SPRAWOZDANIE KOŃCOWE** (5 sekcji: schema + indeksy + dane + zapytania/wizualizacje + wyniki testów)
+- **[`docs/reports/sprawozdanie_koncowe.md`](docs/reports/sprawozdanie_koncowe.md)** — **SPRAWOZDANIE KOŃCOWE** (5 sekcji: schema + indeksy + dane + zapytania/wizualizacje + wyniki testów)
 - **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)** — diagram warstw, kolejność inicjalizacji, strategie optymalizacji
 - **[`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)** — endpointy API, cache, atrybucja
 - **[`docs/SCENARIOS.md`](docs/SCENARIOS.md)** — szczegółowy opis każdego z 6 scenariuszy
@@ -223,17 +224,17 @@ Pełne uzasadnienia w [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Wybrane wyniki (real-data)
 
-### S4 — najlepsze i najgorsze dzielnice po dostępności aptek
+### S4 — najlepsze i najgorsze dzielnice po dostępności aptek (stan po V1.1+V1.2)
 ```
-Śródmieście:  1,661 mieszk./aptekę   (najlepsza, 59 aptek)
-Wola:         2,637 mieszk./aptekę
-Praga-Północ: 2,485 mieszk./aptekę
+Śródmieście:  1 712 mieszk./aptekę   (najlepsza, 59 aptek)
+Wola:         2 536 mieszk./aptekę
+Praga-Północ: 2 542 mieszk./aptekę
 ...
-Bemowo:       4,037 mieszk./aptekę
-Ursus:        4,638 mieszk./aptekę
-Białołęka:    5,121 mieszk./aptekę   (najgorsza, 31 aptek)
+Bemowo:       3 906 mieszk./aptekę
+Ursus:        4 400 mieszk./aptekę
+Białołęka:    4 968 mieszk./aptekę   (najgorsza, 31 aptek)
 ```
-**3x różnica** w dostępności między centrum a peryferiami.
+**2.9x różnica** w dostępności między centrum a peryferiami.
 
 ### S1 — % powierzchni dzielnicy będący pustynią medyczną
 ```

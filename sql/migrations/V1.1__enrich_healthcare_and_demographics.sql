@@ -47,17 +47,22 @@ ALTER TABLE public.szpitale_sor    ADD COLUMN IF NOT EXISTS dzielnica VARCHAR(50
 -- IF NOT EXISTS — bezpieczne ponowne uruchomienie. Tworzymy także indeksy
 -- na nowo dodanych kolumnach `dzielnica`, by S4/S6 mogły filtrować szybko.
 -- ---------------------------------------------------------------------
+-- Indeksy GiST (uwaga na duplikaty):
+--   idx_przychodnie_poz_geom istnieje już od 02_schema.sql — NIE tworzymy
+--   drugiego (idx_przychodnie_geom) by uniknąć duplikacji indeksu na tym
+--   samym (geom, GiST).
 CREATE INDEX IF NOT EXISTS idx_dzielnice_geom         ON public.dzielnice         USING GIST (geom);
-CREATE INDEX IF NOT EXISTS idx_przychodnie_geom       ON public.przychodnie_poz   USING GIST (geom);
 CREATE INDEX IF NOT EXISTS idx_apteki_geom            ON public.apteki            USING GIST (geom);
 CREATE INDEX IF NOT EXISTS idx_szpitale_sor_geom      ON public.szpitale_sor      USING GIST (geom);
 CREATE INDEX IF NOT EXISTS idx_drogi_topo_geom        ON public.drogi_topo        USING GIST (geom);
 CREATE INDEX IF NOT EXISTS idx_drogi_vertices_geom    ON public.drogi_vertices    USING GIST (geom);
 
+-- Indeksy B-Tree na nowo dodanych kolumnach `dzielnica` (filtr GROUP BY w S4/S6).
+-- UWAGA: nie tworzymy idx_dzielnice_nazwa, bo `dzielnice_nazwa_key` (UNIQUE constraint)
+-- już dostarcza B-Tree na kolumnie `nazwa`.
 CREATE INDEX IF NOT EXISTS idx_przychodnie_dzielnica  ON public.przychodnie_poz   (dzielnica);
 CREATE INDEX IF NOT EXISTS idx_apteki_dzielnica       ON public.apteki            (dzielnica);
 CREATE INDEX IF NOT EXISTS idx_szpitale_sor_dzielnica ON public.szpitale_sor      (dzielnica);
-CREATE INDEX IF NOT EXISTS idx_dzielnice_nazwa        ON public.dzielnice         (nazwa);
 CREATE INDEX IF NOT EXISTS idx_demografia_rok         ON public.demografia_dzielnice (rok);
 CREATE INDEX IF NOT EXISTS idx_drogi_topo_source      ON public.drogi_topo        (source);
 CREATE INDEX IF NOT EXISTS idx_drogi_topo_target      ON public.drogi_topo        (target);

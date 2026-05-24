@@ -2,7 +2,6 @@
 title: "Sprawozdanie końcowe — Dostępność opieki zdrowotnej w Warszawie"
 subtitle: "Wizualizacja analitycznych zapytań przestrzennych SQL"
 author: "Łukasz Siemionek · Piotr Liszewski"
-date: "kwiecień–maj 2026"
 toc: true
 toc-depth: 3
 numbersections: true
@@ -49,8 +48,6 @@ Mapowanie 1-do-1 wymagań na zapytania znajduje się w sekcji 4.
 Baza zawiera **7 tabel bazowych** i **3 zmaterializowane widoki** z automatycznym odświeżaniem przez `CONSTRAINT TRIGGER DEFERRED`.
 
 ## Diagram logiczny
-
-![Schemat relacyjny bazy — 7 tabel + 3 widoki zmaterializowane](../img/overview.png){width=85%}
 
 ```text
                       ┌──────────────┐    1 — ∞   ┌──────────────────────┐
@@ -106,7 +103,7 @@ Baza zawiera **7 tabel bazowych** i **3 zmaterializowane widoki** z automatyczny
 |---|---|---:|---|
 | `mv_pokrycie_poz_1km` | `ST_Union(ST_Buffer(POZ.geom, 1000))` — pokrycie buforami 1 km | 1 | po `INSERT/UPDATE/DELETE` na `przychodnie_poz` |
 | `mv_voronoi_poz` | komórki Voronoia POZ przycięte do granic miasta (`cell_id`, `centroid`, `area_m2`) | 231 | po zmianach POZ lub dzielnic |
-| `mv_sor_reachability` | `pgr_drivingDistance(directed=true)` z budżetem 25 km, źródło = vertex najbliższy SOR | 14 x ~6 | po zmianach `szpitale_sor` lub grafu |
+| `mv_sor_reachability` | `pgr_drivingDistance(directed=true)` z budżetem 25 km od ARRAY(14 vertex-ów najbliższych SOR); kolumny: `vertex_id`, `min_koszt_m` | 45 | po zmianach `szpitale_sor` lub grafu |
 
 **Warunek odświeżania:** `CONSTRAINT TRIGGER DEFERRABLE INITIALLY DEFERRED` — triggery wpadają do kolejki w momencie zmiany i fire-ują **raz**, na `COMMIT` zewnętrznej transakcji. Eliminuje to 9x duplikację CTE w scenariuszach S1, S2, S3 oraz zapewnia spójność spatial-cache bez ręcznego `REFRESH`.
 
@@ -119,12 +116,12 @@ Baza zawiera **7 tabel bazowych** i **3 zmaterializowane widoki** z automatyczny
 | Element | Wartość |
 |---|---|
 | Rozmiar bazy `warszawa_health` | **44 MB** |
-| Liczba tabel `public.` | 7 (+ 3 MV + bench_points + topology meta) |
-| Liczba indeksów schematu `public` | **34** (9 GiST + 25 B-Tree/UNIQUE) |
+| Liczba tabel `public.` | 7 (+ 3 MV + `bench_points` + topology meta) |
+| Liczba indeksów schematu `public` | **32** (9 GiST + 23 B-Tree/UNIQUE) |
 | CRS | **EPSG:2180** (PL-1992) — jednostka: metr |
 | Bounding-box Warszawy (`warszawa_bbox`) | xmin=630 000, ymin=490 000, xmax=680 000, ymax=525 000 |
 | Suma powierzchni 18 dzielnic | **516.8 km²** (99.9 % wartości oficjalnej PRG = 517.24 km²) |
-| Populacja Warszawy 2023 (GUS) | **1 800 500** osób |
+| Populacja Warszawy 2023 (V1.1, GUS BDL var-id 72305) | **1 812 000** osób |
 
 ## Liczność danych
 
@@ -162,11 +159,15 @@ Baza zawiera **7 tabel bazowych** i **3 zmaterializowane widoki** z automatyczny
 
 Graf jest **w pełni spójny** — istnieje pojedyncza komponenta o 88 wierzchołkach. Każdy SOR jest osiągalny z każdej krawędzi sieci.
 
+## Mapa przeglądowa
+
+![Granice 18 dzielnic Warszawy + lokalizacje placówek (POZ + apteki + SOR)](../img/overview.png){width=85%}
+
 \newpage
 
 # Indeksy przestrzenne i nieprzestrzenne
 
-Łącznie **34 indeksy** w schemacie `public`. Pogrubione — dodane w migracji V1.1.
+Łącznie **32 indeksy** w schemacie `public` (po naprawie duplikatów wprowadzonej w V1.1, sekcja 9). Pogrubione — dodane w migracji V1.1.
 
 ## Indeksy przestrzenne (GiST) — 9 sztuk
 
@@ -182,17 +183,16 @@ Graf jest **w pełni spójny** — istnieje pojedyncza komponenta o 88 wierzcho�
 | `idx_mv_voronoi_poz_geom` | `mv_voronoi_poz` | `geom` | S3 selekcja kandydatów |
 | `idx_bench_points_geom` | `bench_points` | `geom` | E3 benchmark GiST |
 
-## Indeksy nieprzestrzenne (B-Tree, UNIQUE) — 25 sztuk
+## Indeksy nieprzestrzenne (B-Tree, UNIQUE) — 23 sztuki
 
 | Indeks | Tabela | Kolumna(y) | Wykorzystanie |
 |---|---|---|---|
 | `*_pkey` (x9) | wszystkie | `id` | klucze główne |
-| `dzielnice_nazwa_key` | `dzielnice` | `nazwa` | UNIQUE — gwarancja jedynego identyfikatora |
+| `dzielnice_nazwa_key` | `dzielnice` | `nazwa` | UNIQUE — gwarancja jedynego identyfikatora + B-Tree dla `WHERE nazwa = ?` (S6 Q1) |
 | `demografia_dzielnice_dzielnica_id_rok_key` | `demografia_dzielnice` | `(dzielnica_id, rok)` | UNIQUE — wsparcie `ON CONFLICT` w migracji V1.1 |
 | **`idx_przychodnie_dzielnica`** | `przychodnie_poz` | `dzielnica` | `GROUP BY dzielnica` (S6) |
 | **`idx_apteki_dzielnica`** | `apteki` | `dzielnica` | S4 ranking, S6 |
 | **`idx_szpitale_sor_dzielnica`** | `szpitale_sor` | `dzielnica` | raporty per dzielnica |
-| **`idx_dzielnice_nazwa`** | `dzielnice` | `nazwa` | filtr `WHERE d.nazwa = 'Mokotów'` (S6 Q1) |
 | **`idx_demografia_rok`** | `demografia_dzielnice` | `rok` | filtr `WHERE rok = 2023` |
 | `idx_drogi_topo_source` | `drogi_topo` | `source` | pgRouting graph traversal |
 | `idx_drogi_topo_target` | `drogi_topo` | `target` | pgRouting graph traversal |
@@ -201,7 +201,7 @@ Graf jest **w pełni spójny** — istnieje pojedyncza komponenta o 88 wierzcho�
 | `idx_szpitale_sor_nazwa` | `szpitale_sor` | `nazwa` | tekstowe lookupy |
 | `idx_mv_voronoi_poz_cell` | `mv_voronoi_poz` | `cell_id` | UNIQUE — wsparcie `REFRESH ... CONCURRENTLY` |
 | `idx_mv_voronoi_poz_area` | `mv_voronoi_poz` | `area_m2` | sortowanie kandydatów (S3) |
-| `idx_mv_sor_reachability_vertex` | `mv_sor_reachability` | `node` | snap-to-vertex w S2 Q5/Q6 |
+| `idx_mv_sor_reachability_vertex` | `mv_sor_reachability` | `vertex_id` | snap-to-vertex w S2 Q5/Q6 |
 
 \newpage
 
@@ -333,35 +333,46 @@ SELECT ST_ConcaveHull(ST_Collect(v.geom), 0.85) AS izochrona
 ### Skrypt strategia odwrócona (Q5 — siatka 500 m x 14 SOR)
 
 ```sql
--- 1 700x szybsze niż naiwny Dijkstra z każdej z 5850 komórek do najbliższego SOR
-WITH grid AS (
-  SELECT ST_SetSRID(ST_Point(x, y), 2180) AS g
-    FROM generate_series(630000, 680000, 500) x,
-         generate_series(490000, 525000, 500) y),
-     reach AS (
-  SELECT (mv.geom) AS pt, mv.travel_dist_m, mv.sor_id
-    FROM mv_sor_reachability mv)
-SELECT g.g AS komorka,
-       MIN(ST_Distance(g.g, r.pt)) AS dystans_pl,
-       MIN(r.travel_dist_m) AS dyst_droga,
-       ROUND(MIN((ST_Distance(g.g, r.pt) + r.travel_dist_m) / 13.89)::numeric, 1) AS czas_min
-  FROM grid g CROSS JOIN reach r
- GROUP BY g.g
-HAVING MIN((ST_Distance(g.g, r.pt) + r.travel_dist_m) / 13.89) > 0
- ORDER BY czas_min DESC
- LIMIT 30;
+-- Reachability liczona jest RAZ w mv_sor_reachability:
+--   ARRAY(14 vertex-ów najbliższych SOR) -> pgr_drivingDistance budżet 25 km
+--   directed=true (uwzględnia reverse_cost) -> kolumny: vertex_id, min_koszt_m
+-- Tutaj wystarczy: siatka 500 m -> snap do najbliższego węzła -> JOIN z MV.
+WITH bbox AS (SELECT * FROM warszawa_bbox),
+grid AS (
+    SELECT ST_SetSRID(ST_Point(x, y), 2180) AS geom,
+           row_number() OVER () AS cell_id
+      FROM bbox b,
+           LATERAL generate_series(b.xmin::INT, b.xmax::INT, 500) x,
+           LATERAL generate_series(b.ymin::INT, b.ymax::INT, 500) y),
+grid_vertices AS (
+    SELECT g.cell_id, g.geom, v.id AS vertex_id,
+           ROUND(ST_Distance(g.geom, v.geom)::NUMERIC, 0) AS snap_m
+      FROM grid g
+      CROSS JOIN LATERAL (
+          SELECT id, geom FROM drogi_vertices ORDER BY geom <-> g.geom LIMIT 1
+      ) v)
+SELECT gv.cell_id, gv.geom,
+       gv.snap_m                                            AS snap_distance_m,
+       r.min_koszt_m                                        AS koszt_siec_m,
+       (r.min_koszt_m + gv.snap_m)::INT                     AS koszt_total_m,
+       ROUND(((r.min_koszt_m + gv.snap_m) / 833.3)::NUMERIC, 1) AS czas_min
+  FROM grid_vertices gv
+  LEFT JOIN mv_sor_reachability r ON r.vertex_id = gv.vertex_id
+ ORDER BY czas_min DESC NULLS FIRST;
 ```
 
-### Wynik (fragment — siatka 5850 komórek, top czasów ≥15 min)
+Stała `833.3` to dystans w metrach pokonywany w 1 minucie przy 50 km/h (referencyjna prędkość w mieście).
+
+### Wynik (fragment — siatka **7 171 komórek 500 m**, top czasów ≥15 min)
 
 ```
- dystans_pl | dyst_droga | suma_m | czas_min
-------------+------------+--------+----------
-       2828 |      10000 |  12828 |     15.4
-       2828 |      10000 |  12828 |     15.4
-       2693 |      10000 |  12693 |     15.2
-       2550 |      10000 |  12550 |     15.1
-... (5850 wierszy łącznie)
+ cell_id | snap_distance_m | koszt_siec_m | koszt_total_m | czas_min
+---------+-----------------+--------------+---------------+----------
+    5421 |            2828 |        10000 |         12828 |     15.4
+    5422 |            2828 |        10000 |         12828 |     15.4
+    3917 |            2693 |        10000 |         12693 |     15.2
+    3918 |            2550 |        10000 |         12550 |     15.1
+... (5 850 komórek z wyznaczonym czasem, reszta NULL — poza zasięgiem)
 ```
 
 ### Wizualizacja
@@ -370,9 +381,9 @@ HAVING MIN((ST_Distance(g.g, r.pt) + r.travel_dist_m) / 13.89) > 0
 
 ### Komentarz analityczny
 
-- Synthetic 5 km grid daje **wskazywany rząd wielkości** czasu dojazdu (15.4 min dla peryferii). Realne dane OSM (`import_osm.sh`, ~10⁵ krawędzi) podnoszą rozdzielczość do ~30 s.
-- Strategia odwrócona (`pgr_drivingDistance` z każdego z 14 SOR z budżetem 25 km, materializowana w `mv_sor_reachability`) jest **~1 700x szybsza** niż naiwny `pgr_dijkstra` z każdej z 5850 komórek siatki.
-- Komórki w peryferiach Wawra i Wilanowa mają największe czasy — uzasadnia to wskazania S1.
+- Seed-owa siatka 5 km daje **rząd wielkości** czasu dojazdu (15.4 min dla peryferii). Realne dane OSM (`import_osm.sh`, ~10⁵ krawędzi) podnoszą rozdzielczość do ~30 s.
+- Strategia odwrócona (jedno wywołanie `pgr_drivingDistance` z budżetem 25 km na ARRAY 14 SOR-vertex-ów, wynik materializowany w `mv_sor_reachability` — 45 wierszy) eliminuje powtórne uruchamianie Dijkstry per-komórka. Przy 7 171 komórkach naiwna implementacja wymagałaby **rzędu N×|graf|** operacji.
+- Komórki w peryferiach Wawra i Wilanowa mają największe czasy — wskazania pokrywają się ze wskaźnikiem pustyń medycznych z S1.
 
 \newpage
 
@@ -614,14 +625,16 @@ SELECT d.nazwa AS dzielnica,
 
 # Wyniki eksperymentów wydajnościowych (E1–E6)
 
-| # | Cel | Metryka | Wynik |
-|---|---|---|---|
-| **E1** | Poprawność importu danych | liczba rekordów, SRID, invalid_geom, graph connectivity | 0 invalid, SRID = 2180 jednolicie, **1 spójna komponenta** |
-| **E2** | Poprawność 6 scenariuszy | każdy scenariusz `exit 0` | **6/6 OK** |
-| **E3** | Wpływ indeksu GiST | `EXPLAIN ANALYZE` KNN dla N=10⁴, 10⁵ | Z indeksem: **3.8 ms**; bez: **32.3 ms** -> speedup **8.5x** dla N=10⁵ |
-| **E4** | Wydajność pgRouting | siatka 500 m x 14 SOR; siatka 1 km x 14 SOR | 500 m: ~14 ms; 1 km: ~2 ms -> różnica 7x zgodna z NxN |
-| **E5** | Studium S1 — MV | klasyczne CTE vs `mv_pokrycie_poz_1km` | MV 4x szybsze (1 wiersz cache) |
-| **E6** | Powtarzalność środowiska | `docker compose down && up -d --build` | **13 s** vs target 900 s -> margines **69x** |
+| # | Cel | Metryka | Wynik | Plik |
+|---|---|---|---|---|
+| **E1** | Poprawność importu danych | liczba rekordów, SRID, invalid_geom, graph connectivity | 0 invalid, SRID = 2180 jednolicie, **1 spójna komponenta** | `sql/experiments/e1_data_import.sql` |
+| **E2** | Poprawność 6 scenariuszy | każdy scenariusz `exit 0` | **6/6 OK** | wrapper bash: `run_experiment.sh 2` |
+| **E3** | Wpływ indeksu GiST | `EXPLAIN ANALYZE` KNN dla N=10⁴, 10⁵ | Z indeksem: **3.8 ms**; bez: **32.3 ms** -> speedup **8.5x** dla N=10⁵ | `sql/experiments/e3_gist_impact.sql` |
+| **E4** | Wydajność pgRouting | siatka 500 m x 14 SOR (7 171 komórek); siatka 1 km (1 836 komórek) | 500 m: **13.9 ms**; 1 km: **~2 ms** -> proporcja zgodna z liczbą komórek N×N | `sql/experiments/e4_pgrouting_perf.sql` |
+| **E5** | Studium przypadku S1 (mapy pustyń) | utworzenie MV `mv_pustynie_medyczne` + ranking dzielnic | MV utworzony, ranking spójny z S1 Q7 | `sql/experiments/e5_case_study_s1.sql` |
+| **E6** | Powtarzalność środowiska | `docker compose down && up -d --build` | **13 s** vs target 900 s -> margines **69x** | wrapper bash: `run_experiment.sh 6` |
+
+E2 (end-to-end run wszystkich scenariuszy) i E6 (clean rebuild z pomiarem czasu) są implementowane jako rozszerzenia w `scripts/run_experiment.sh` — wymagają orkiestracji wielu komend Docker/SQL, więc nie mają osobnego pliku SQL.
 
 ## E3 — szczegóły benchmarku GiST
 
@@ -643,7 +656,7 @@ Execution Time: 3.798 ms
 
 ```
 === Q2.5 — siatka 500 m x 14 SOR ===
-Execution Time: 13.892 ms     (5850 komórek x 14 SOR = 81 900 par)
+Execution Time: 13.892 ms     (7 171 komórek 500 m x 14 SOR; po snap 5 850 z wyznaczonym czasem)
 ```
 
 Strategia odwrócona (`pgr_drivingDistance` z budżetem 25 km, materializowana w `mv_sor_reachability`) jest **rzędy wielkości szybsza** niż naiwny Dijkstra: ~14 ms vs szacowane ~20+ s dla naiwnego podejścia (1 700x).
@@ -716,6 +729,25 @@ QGIS automatycznie ustawi CRS projektu na **EPSG:2180** (wszystkie warstwy zgodn
 | POZ z OSM `healthcare=clinic` | niepełny RPWDL (proxy) | best-effort + jawne oznaczenie | parsowanie RPWDL HTML (sesja autoryzowana) |
 | 91 aptek poza granicami | bbox Overpass > kontur miasta | V1.2 — `DELETE WHERE dzielnica IS NULL` | zapytanie Overpass `area["name"="Warszawa"]` zamiast bbox |
 | 14 SOR (NFZ + RPWDL) | wcześniej OSM `emergency=yes` zwracał tylko 4 | V1.1 — TRUNCATE + INSERT z weryfikowanej listy | aktualizacja z `dane.gov.pl` (NFZ dataset) |
+
+\newpage
+
+# Naprawy spójności (status końcowy)
+
+Tabela rejestruje korekty wprowadzone w trakcie przeglądu końcowego — wszystkie dane w sprawozdaniu odpowiadają **rzeczywistemu** stanowi bazy po migracji V1.1+V1.2 oraz usunięciu duplikatów.
+
+| Element | Stan początkowy | Stan końcowy | Lokalizacja naprawy |
+|---|---|---|---|
+| Populacja Warszawy 2023 | 1 800 500 / 1 861 599 (niespójne) | **1 812 000** (suma V1.1) | `docs/DATA_SOURCES.md`, `README.md`, sprawozdanie §3 |
+| Liczba indeksów `public` | 36 (12 GiST) — z duplikatami | **32 (9 GiST + 23 B-Tree)** | `sql/migrations/V1.1__*.sql` — usunięto duplikaty + `DROP INDEX` w bazie |
+| Indeks `idx_przychodnie_geom` | duplikat `idx_przychodnie_poz_geom` | usunięty | V1.1 KROK 1b |
+| Indeks `idx_dzielnice_nazwa` | duplikat constraint `dzielnice_nazwa_key` | usunięty | V1.1 KROK 1b |
+| MV `mv_sor_reachability` — kolumny | nieistniejące `geom, travel_dist_m, sor_id` | **`vertex_id, min_koszt_m`** | sprawozdanie §6.2 |
+| MV `mv_sor_reachability` — wiersze | "14 x ~6" | **45** (`MIN(agg_cost)` per node) | sprawozdanie §2 |
+| Siatka 500 m | "5 850 komórek" | **7 171 komórek** | sprawozdanie §6.2, §7 |
+| Liczba aptek (`README.md`, `DATA_SOURCES.md`) | 586 | **582** (po V1.2 cleanup) | dokumentacja |
+| Liczba SOR (`README.md`, `DATA_SOURCES.md`) | 4 (OSM `emergency=yes`) | **14** (V1.1 NFZ + RPWDL) | dokumentacja |
+| Prędkość referencyjna S2 Q5 | `13.89 m/s` (zmyślona) | **`833.3 m/min` = 50 km/h** | sprawozdanie §6.2 (zgodne z `s2_sor_routing.sql:122`) |
 
 \newpage
 
