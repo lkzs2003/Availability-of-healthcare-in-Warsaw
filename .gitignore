@@ -2,6 +2,8 @@
 data/osm/
 data/shp/
 data/cache/
+data/apteki.json
+data/apteki_insert.sql
 *.pbf
 *.osm
 pgdata/
