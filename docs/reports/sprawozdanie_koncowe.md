@@ -778,11 +778,8 @@ Tabela rejestruje korekty wprowadzone w trakcie przeglądu końcowego — wszyst
 - **6 scenariuszy SQL:** `sql/scenarios/s1..s6_*.sql`
 - **4 eksperymenty SQL:** `sql/experiments/e1, e3, e4, e5_*.sql`
 - **7 zrzutów z QGIS 4.0.2** (renderowane PyQGIS API z warstw PostGIS): `docs/img/qgis/overview_qgis.png`, `s1..s6_qgis.png`
-- **7 wizualizacji matplotlib** (alternatywny rendering programatyczny): `docs/img/overview.png`, `s1..s6_*.png`
 - **Skrypt renderujący QGIS:** `scripts/lib/render_qgis.py` (PyQGIS API, headless via `QGIS --code`)
 - **Projekt QGIS:** `qgis/warszawa_health.qgs` (gotowy do otwarcia)
-- **Wyniki tekstowe:** `docs/results/s1, s4, s5, s6_summary.txt`, `e1, e3, e4_results.txt`
-
 ## Atrybucja
 
 - **OpenStreetMap contributors** — apteki, POZ, granice dzielnic, sieć drogowa (ODbL 1.0)

@@ -1,9 +1,0 @@
-        nazwa        |      adres       | odl_m 
----------------------+------------------+-------
- Super-Pharm         | Złota 59         |   252
- Cosmedica           | Śliska 3         |   307
- Wawa                |                  |   332
- Aptekarz Warszawski | Świętokrzyska 32 |   333
- Dr. Max             | Zgoda 9          |   397
-(5 rows)
-

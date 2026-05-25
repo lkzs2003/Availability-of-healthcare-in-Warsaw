@@ -51,7 +51,7 @@ Po tym:
 | **E1** | Poprawność importu danych | Liczba rekordów, SRID, invalid geom, graph connectivity | 0 invalid, SRID=2180, 1 component OK |
 | **E2** | Poprawność 6 scenariuszy | Każdy scenariusz exit 0 | 6/6 OK |
 | **E3** | Wpływ indeksu GiST | EXPLAIN ANALYZE dla N=10^4, 10^5 | ~485x speedup z GiST OK |
-| **E4** | Wydajność pgRouting | Czas dla siatki 500 m vs 1 km | Patrz `docs/SCENARIOS.md` |
+| **E4** | Wydajność pgRouting | Czas dla siatki 500 m vs 1 km | 500 m: 13.9 ms; 1 km: ~2 ms |
 | **E5** | Studium przypadku S1 | Materialised views z mapą pustyń | mv_pustynie_medyczne OK |
 | **E6** | Powtarzalność środowiska | Czas clean rebuild | **13 s** vs target 900 s (69x margines) OK |
 
@@ -118,16 +118,11 @@ Po tym:
 │       └── s6_dzielnice_placowki.sql
 │
 ├── docs/
-│   ├── reports/sprawozdanie_koncowe.md  # SPRAWOZDANIE KOŃCOWE (5 wymaganych sekcji)
-│   ├── ARCHITECTURE.md            # diagram warstw, kolejność init, optymalizacje
-│   ├── DATA_SOURCES.md            # endpointy + cache + atrybucja
-│   ├── SCENARIOS.md               # szczegółowy opis każdego scenariusza
-│   ├── PRESENTATION.md            # plan obrony / demo
-│   ├── TROUBLESHOOTING.md         # najczęstsze problemy
-│   ├── img/                       # 7 wizualizacji PNG (overview + S1-S6)
-│   └── results/                   # output scenariuszy + eksperymentów
+│   ├── reports/sprawozdanie_koncowe.md   # SPRAWOZDANIE KOŃCOWE (5 wymaganych sekcji)
+│   ├── reports/sprawozdanie_koncowe.pdf  # wersja PDF do oddania
+│   └── img/qgis/                  # 7 zrzutów z QGIS 4.0.2 (overview + S1-S6)
 │
-├── scripts/lib/render_maps.py     # generator wizualizacji (matplotlib + PostGIS)
+├── scripts/lib/render_qgis.py     # generator zrzutów QGIS (PyQGIS, headless)
 └── README.md                      # ten plik
 ```
 
@@ -194,20 +189,15 @@ Pozwala bulk-load (vertices -> edges) w jednej transakcji bez utraty integralno�
 - `NOT NULL` + FK na grafie zapobiega corrupt rows
 - Wszystkie INSERT z fetcher'a escapowane (`sql_str()`)
 
-Pełne uzasadnienia w [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+Pełne uzasadnienia w [sprawozdaniu końcowym](docs/reports/sprawozdanie_koncowe.pdf).
 
 ---
 
 ## Dokumentacja
 
-- **[`docs/reports/sprawozdanie_koncowe.md`](docs/reports/sprawozdanie_koncowe.md)** — **SPRAWOZDANIE KOŃCOWE** (5 sekcji: schema + indeksy + dane + zapytania/wizualizacje + wyniki testów)
-- **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)** — diagram warstw, kolejność inicjalizacji, strategie optymalizacji
-- **[`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)** — endpointy API, cache, atrybucja
-- **[`docs/SCENARIOS.md`](docs/SCENARIOS.md)** — szczegółowy opis każdego z 6 scenariuszy
-- **[`docs/PRESENTATION.md`](docs/PRESENTATION.md)** — plan obrony / demo (15 min)
-- **[`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md)** — częste problemy + rozwiązania
-- **[`docs/img/`](docs/img/)** — 7 wygenerowanych wizualizacji PNG (overview + S1-S6)
-- **[`docs/results/`](docs/results/)** — wyniki wykonania scenariuszy i eksperymentów
+- **[`docs/reports/sprawozdanie_koncowe.pdf`](docs/reports/sprawozdanie_koncowe.pdf)** — **SPRAWOZDANIE KOŃCOWE** (wersja PDF do oddania)
+- **[`docs/reports/sprawozdanie_koncowe.md`](docs/reports/sprawozdanie_koncowe.md)** — źródło Markdown sprawozdania (5 sekcji: schemat + indeksy + dane + zapytania/wizualizacje + wyniki)
+- **[`docs/img/qgis/`](docs/img/qgis/)** — 7 zrzutów z QGIS 4.0.2 (overview + S1-S6)
 - **[`qgis/README.md`](qgis/README.md)** — konfiguracja warstw w QGIS
 
 ---
