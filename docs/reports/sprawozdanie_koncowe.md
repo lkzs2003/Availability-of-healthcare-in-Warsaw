@@ -173,7 +173,7 @@ Liczby w bazie zostały skonfrontowane z dwoma niezależnymi rejestrami publiczn
 
 ## Mapa przeglądowa
 
-![Granice 18 dzielnic Warszawy + lokalizacje placówek (POZ + apteki + SOR)](../img/overview.png){width=85%}
+![Granice 18 dzielnic Warszawy + lokalizacje placówek POZ (zielone) / apteki (niebieskie) / SOR (czerwone). Render: **QGIS 4.0.2** (warstwy PostGIS z `warszawa_health`).](../img/qgis/overview_qgis.png){width=85%}
 
 \newpage
 
@@ -309,7 +309,7 @@ SELECT pd.nazwa,
 
 ### Wizualizacja
 
-![S1 — Pustynie medyczne: bufor 1 km wokół POZ + ST_Difference](../img/s1_pustynie_medyczne.png){width=85%}
+![S1 — Pustynie medyczne (czerwony) = obszary >1 km od najbliższej POZ. Bufor 1 km wokół POZ + `ST_Difference`. Render: **QGIS 4.0.2**.](../img/qgis/s1_qgis.png){width=85%}
 
 ### Komentarz analityczny
 
@@ -389,7 +389,7 @@ Stała `833.3` to dystans w metrach pokonywany w 1 minucie przy 50 km/h (referen
 
 ### Wizualizacja
 
-![S2 — Izochrony 5/10/15 min od 14 SOR (pgr_drivingDistance + ConcaveHull)](../img/s2_izochrony_sor.png){width=85%}
+![S2 — Strefy dojazdu wokół 14 SOR (bufory 1/2/3 km demonstracja). `pgr_drivingDistance` + `ST_ConcaveHull`. Render: **QGIS 4.0.2**.](../img/qgis/s2_qgis.png){width=85%}
 
 ### Komentarz analityczny
 
@@ -441,7 +441,7 @@ SELECT rk AS rank_nr, x_pl92, y_pl92, pow_strefy_km2, szac_mieszkancy_1km
 
 ### Wizualizacja
 
-![S3 — Komórki Voronoia POZ + 5 kandydatów na nową przychodnię](../img/s3_kandydaci_nowa_poz.png){width=85%}
+![S3 — Komórki Voronoia POZ + 5 kandydatów (pomarańczowe) na lokalizację nowej przychodni. `ST_VoronoiPolygons` + centroidy największych stref. Render: **QGIS 4.0.2**.](../img/qgis/s3_qgis.png){width=85%}
 
 ### Komentarz analityczny
 
@@ -501,7 +501,7 @@ SELECT nazwa, 0, NULL, NULL, 0
 
 ### Wizualizacja
 
-![S4 — Kwartyle dostępności aptek per dzielnica (NTILE(4))](../img/s4_kwartyle_aptek.png){width=85%}
+![S4 — Kwartyle dostępności aptek (`NTILE(4)` wg mieszkańcy/apteka). Zielony = Q4 (najlepsza), pomarańczowy = Q2/Q3, czerwony = Q1 (najgorsza). Render: **QGIS 4.0.2**.](../img/qgis/s4_qgis.png){width=85%}
 
 ### Komentarz analityczny
 
@@ -554,7 +554,7 @@ ROLLBACK;
 
 ### Wizualizacja
 
-![S5 — Pałac Kultury (czerwony) + 3 najbliższe apteki (KNN `<->`) w promieniu 340 m](../img/s5_najblizsze_apteki.png){width=85%}
+![S5 — Pałac Kultury (czerwony) + 3 najbliższe apteki (zielone) z 582 (niebieskie). KNN operator `<->` na indeksie `idx_apteki_geom` (GiST). Render: **QGIS 4.0.2**.](../img/qgis/s5_qgis.png){width=85%}
 
 ### Komentarz analityczny
 
@@ -628,7 +628,7 @@ SELECT d.nazwa AS dzielnica,
 
 ### Wizualizacja
 
-![S6 — Placówki per dzielnica (apteki + POZ + SOR)](../img/s6_placowki_per_dzielnica.png){width=85%}
+![S6 — Łączna liczba placówek per dzielnica (Graduated symbology — Jenks, 5 klas). Najciemniejsze dzielnice (Mokotów, Wola, Praga-Płd) = największa liczba placówek. Render: **QGIS 4.0.2**.](../img/qgis/s6_qgis.png){width=85%}
 
 ### Komentarz analityczny
 
@@ -777,7 +777,10 @@ Tabela rejestruje korekty wprowadzone w trakcie przeglądu końcowego — wszyst
 - **Skrypt importu aptek:** `scripts/import_apteki.sh`
 - **6 scenariuszy SQL:** `sql/scenarios/s1..s6_*.sql`
 - **4 eksperymenty SQL:** `sql/experiments/e1, e3, e4, e5_*.sql`
-- **7 wizualizacji PNG:** `docs/img/overview.png`, `s1..s6_*.png`
+- **7 zrzutów z QGIS 4.0.2** (renderowane PyQGIS API z warstw PostGIS): `docs/img/qgis/overview_qgis.png`, `s1..s6_qgis.png`
+- **7 wizualizacji matplotlib** (alternatywny rendering programatyczny): `docs/img/overview.png`, `s1..s6_*.png`
+- **Skrypt renderujący QGIS:** `scripts/lib/render_qgis.py` (PyQGIS API, headless via `QGIS --code`)
+- **Projekt QGIS:** `qgis/warszawa_health.qgs` (gotowy do otwarcia)
 - **Wyniki tekstowe:** `docs/results/s1, s4, s5, s6_summary.txt`, `e1, e3, e4_results.txt`
 
 ## Atrybucja

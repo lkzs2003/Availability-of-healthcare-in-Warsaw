@@ -1,0 +1,62 @@
+<!DOCTYPE qgis PUBLIC 'http://mrcc.com/qgis.dtd' 'SYSTEM'>
+<qgis projectname="Warszawa Health — projekt SPDB" version="3.34" saveDateTime="2026-05-24T18:00:00">
+  <homePath path="."/>
+  <title>Wizualizacja analitycznych zapytań przestrzennych SQL — Warszawa</title>
+  <projectCrs>
+    <spatialrefsys>
+      <wkt>PROJCRS["ETRF2000-PL / CS92",BASEGEOGCRS["ETRF2000-PL",DATUM["ETRF2000 Poland",ELLIPSOID["GRS 1980",6378137,298.257222101,LENGTHUNIT["metre",1]]],PRIMEM["Greenwich",0,ANGLEUNIT["degree",0.0174532925199433]],ID["EPSG",9702]],CONVERSION["Poland CS92",METHOD["Transverse Mercator",ID["EPSG",9807]],PARAMETER["Latitude of natural origin",0,ANGLEUNIT["degree",0.0174532925199433]],PARAMETER["Longitude of natural origin",19,ANGLEUNIT["degree",0.0174532925199433]],PARAMETER["Scale factor at natural origin",0.9993,SCALEUNIT["unity",1]],PARAMETER["False easting",500000,LENGTHUNIT["metre",1]],PARAMETER["False northing",-5300000,LENGTHUNIT["metre",1]]],CS[Cartesian,2],AXIS["northing (X)",north,ORDER[1],LENGTHUNIT["metre",1]],AXIS["easting (Y)",east,ORDER[2],LENGTHUNIT["metre",1]],ID["EPSG",2180]]</wkt>
+      <proj4>+proj=tmerc +lat_0=0 +lon_0=19 +k=0.9993 +x_0=500000 +y_0=-5300000 +ellps=GRS80 +units=m +no_defs +type=crs</proj4>
+      <srsid>2554</srsid>
+      <srid>2180</srid>
+      <authid>EPSG:2180</authid>
+      <description>ETRF2000-PL / CS92</description>
+      <projectionacronym>tmerc</projectionacronym>
+      <ellipsoidacronym>EPSG:7019</ellipsoidacronym>
+      <geographicflag>false</geographicflag>
+    </spatialrefsys>
+  </projectCrs>
+  <layer-tree-group>
+    <customproperties/>
+    <layer-tree-layer providerKey="postgres" source="dbname='warszawa_health' host=localhost port=5432 user='postgres' password='postgres' sslmode=disable key='id' srid=2180 type=MultiPolygon checkPrimaryKeyUnicity='1' table=&quot;public&quot;.&quot;dzielnice&quot; (geom)" name="Dzielnice Warszawy" id="dzielnice_layer">
+      <customproperties/>
+    </layer-tree-layer>
+    <layer-tree-layer providerKey="postgres" source="dbname='warszawa_health' host=localhost port=5432 user='postgres' password='postgres' sslmode=disable key='id' srid=2180 type=Point checkPrimaryKeyUnicity='1' table=&quot;public&quot;.&quot;przychodnie_poz&quot; (geom)" name="Przychodnie POZ" id="poz_layer">
+      <customproperties/>
+    </layer-tree-layer>
+    <layer-tree-layer providerKey="postgres" source="dbname='warszawa_health' host=localhost port=5432 user='postgres' password='postgres' sslmode=disable key='id' srid=2180 type=Point checkPrimaryKeyUnicity='1' table=&quot;public&quot;.&quot;apteki&quot; (geom)" name="Apteki" id="apteki_layer">
+      <customproperties/>
+    </layer-tree-layer>
+    <layer-tree-layer providerKey="postgres" source="dbname='warszawa_health' host=localhost port=5432 user='postgres' password='postgres' sslmode=disable key='id' srid=2180 type=Point checkPrimaryKeyUnicity='1' table=&quot;public&quot;.&quot;szpitale_sor&quot; (geom)" name="Szpitalne SOR" id="sor_layer">
+      <customproperties/>
+    </layer-tree-layer>
+    <layer-tree-layer providerKey="postgres" source="dbname='warszawa_health' host=localhost port=5432 user='postgres' password='postgres' sslmode=disable key='id' srid=2180 type=LineString checkPrimaryKeyUnicity='1' table=&quot;public&quot;.&quot;drogi_topo&quot; (geom)" name="Sieć drogowa" id="drogi_layer">
+      <customproperties/>
+    </layer-tree-layer>
+    <custom-order enabled="0"/>
+  </layer-tree-group>
+  <snapping-settings tolerance="12" mode="2" unit="1" enabled="0" type="1"/>
+  <mapcanvas annotationsVisible="1" name="theMapCanvas">
+    <units>meters</units>
+    <extent>
+      <xmin>630000</xmin>
+      <ymin>490000</ymin>
+      <xmax>680000</xmax>
+      <ymax>525000</ymax>
+    </extent>
+    <rotation>0</rotation>
+    <destinationsrs>
+      <spatialrefsys>
+        <authid>EPSG:2180</authid>
+      </spatialrefsys>
+    </destinationsrs>
+    <rendermaptile>0</rendermaptile>
+  </mapcanvas>
+  <projectlayers/>
+  <properties>
+    <Gui>
+      <CanvasColorBluePart type="int">255</CanvasColorBluePart>
+      <CanvasColorGreenPart type="int">255</CanvasColorGreenPart>
+      <CanvasColorRedPart type="int">255</CanvasColorRedPart>
+    </Gui>
+  </properties>
+</qgis>
