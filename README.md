@@ -19,10 +19,18 @@ Wszystkie dane z publicznych źródeł: **GUS BDL**, **OpenStreetMap**, **Geopor
 ```bash
 git clone https://github.com/lkzs2003/Availability-of-healthcare-in-Warsaw.git
 cd Availability-of-healthcare-in-Warsaw
-cp .env.example .env
-docker compose up -d --build   
-./scripts/import_real_data.sh
+./scripts/setup.sh
 ```
+
+`setup.sh` wykonuje pełny pipeline:
+
+1. **Docker stack** (PostGIS 3.4 + pgAdmin, port `127.0.0.1` only) — auto-load `sql/init/*.sql` (seed).
+2. **`import_real_data.sh`** — pobiera real dane z GUS BDL + OSM Overpass + PRG (18 dzielnic, 231 POZ, 4 SOR, 18 demografia).
+3. **`import_apteki.sh`** — pobiera 673 apteki z OSM bbox.
+4. **Migracja V1.1** — uzupełnia listę SOR do **14** (NFZ + RPWDL), demografia GUS 2023 (1 812 000), dodaje kolumnę `dzielnica` + spatial join, indeksy.
+5. **Migracja V1.2** — usuwa 91 aptek poza granicą miasta → **582**.
+
+Stan końcowy = stan opisany w sprawozdaniu końcowym: **582 apt / 231 POZ / 14 SOR / 18 dzielnic / 1 812 000 mieszkańców / 30 indeksów** (32 po uruchomieniu E3, który tworzy tabelę `bench_points`).
 
 Po tym:
 - Baza dostępna na `127.0.0.1:5432` (`warszawa_health` / `postgres` / `postgres`)
@@ -99,6 +107,7 @@ Po tym:
 │   └── e5_case_study_s1.sql       # materialised views pustyń
 │
 ├── scripts/
+│   ├── setup.sh                   # orchestrator pełnego pipeline'u (Quick Start)
 │   ├── run_scenario.sh            # ./scripts/run_scenario.sh <1-6>
 │   ├── run_experiment.sh          # ./scripts/run_experiment.sh <1-6>  (E2/E6 specjalne)
 │   ├── import_osm.sh              # OSM road network -> osm2pgrouting -> drogi_topo

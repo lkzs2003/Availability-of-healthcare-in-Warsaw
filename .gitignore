@@ -2,8 +2,9 @@
 data/osm/
 data/shp/
 data/cache/
-data/apteki.json
 data/apteki_insert.sql
+# data/apteki.json — TRZYMAMY w repo jako fallback gdy Overpass jest niedostępne
+#                    (~270 kB, regenerowane przez `./scripts/import_apteki.sh --refresh`)
 *.pbf
 *.osm
 pgdata/

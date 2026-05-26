@@ -117,7 +117,7 @@ Baza zawiera **7 tabel bazowych** i **3 zmaterializowane widoki** z automatyczny
 |---|---|
 | Rozmiar bazy `warszawa_health` | **44 MB** |
 | Liczba tabel `public.` | 7 (+ 3 MV + `bench_points` + topology meta) |
-| Liczba indeksów schematu `public` | **32** (9 GiST + 23 B-Tree/UNIQUE) |
+| Liczba indeksów schematu `public` | **30** (8 GiST + 22 B-Tree/UNIQUE) po `setup.sh` · **32 (9 + 23)** po uruchomieniu E3 (tworzy tabelę `bench_points` + 1 GiST + 1 PK) |
 | CRS | **EPSG:2180** (PL-1992) — jednostka: metr |
 | Bounding-box Warszawy (`warszawa_bbox`) | xmin=630 000, ymin=490 000, xmax=680 000, ymax=525 000 |
 | Suma powierzchni 18 dzielnic | **516.8 km²** (99.9 % wartości oficjalnej PRG = 517.24 km²) |
@@ -179,9 +179,9 @@ Liczby w bazie zostały skonfrontowane z dwoma niezależnymi rejestrami publiczn
 
 # Indeksy przestrzenne i nieprzestrzenne
 
-Łącznie **32 indeksy** w schemacie `public` (po naprawie duplikatów wprowadzonej w V1.1, sekcja 9). Pogrubione — dodane w migracji V1.1.
+Łącznie **30 indeksów** po inicjalizacji (`setup.sh`) lub **32** po dodatkowym uruchomieniu eksperymentu E3 (tworzy tabelę `bench_points` z 100 000 wierszy + 1 indeks GiST + 1 PK). Pogrubione — dodane w migracji V1.1.
 
-## Indeksy przestrzenne (GiST) — 9 sztuk
+## Indeksy przestrzenne (GiST) — 8 sztuk (+1 z E3 = 9)
 
 | Indeks | Tabela | Kolumna | Wykorzystanie |
 |---|---|---|---|
@@ -195,7 +195,7 @@ Liczby w bazie zostały skonfrontowane z dwoma niezależnymi rejestrami publiczn
 | `idx_mv_voronoi_poz_geom` | `mv_voronoi_poz` | `geom` | S3 selekcja kandydatów |
 | `idx_bench_points_geom` | `bench_points` | `geom` | E3 benchmark GiST |
 
-## Indeksy nieprzestrzenne (B-Tree, UNIQUE) — 23 sztuki
+## Indeksy nieprzestrzenne (B-Tree, UNIQUE) — 22 sztuki (+1 z E3 = 23)
 
 | Indeks | Tabela | Kolumna(y) | Wykorzystanie |
 |---|---|---|---|
@@ -756,7 +756,7 @@ Tabela rejestruje korekty wprowadzone w trakcie przeglądu końcowego — wszyst
 | Element | Stan początkowy | Stan końcowy | Lokalizacja naprawy |
 |---|---|---|---|
 | Populacja Warszawy 2023 | 1 800 500 / 1 861 599 (niespójne) | **1 812 000** (suma V1.1) | `docs/DATA_SOURCES.md`, `README.md`, sprawozdanie §3 |
-| Liczba indeksów `public` | 36 (12 GiST) — z duplikatami | **32 (9 GiST + 23 B-Tree)** | `sql/migrations/V1.1__*.sql` — usunięto duplikaty + `DROP INDEX` w bazie |
+| Liczba indeksów `public` | 36 (12 GiST) — z duplikatami | **30 (8+22)** po `setup.sh` / **32 (9+23)** po E3 | `sql/migrations/V1.1__*.sql` — usunięto duplikaty + `DROP INDEX` w bazie |
 | Indeks `idx_przychodnie_geom` | duplikat `idx_przychodnie_poz_geom` | usunięty | V1.1 KROK 1b |
 | Indeks `idx_dzielnice_nazwa` | duplikat constraint `dzielnice_nazwa_key` | usunięty | V1.1 KROK 1b |
 | MV `mv_sor_reachability` — kolumny | nieistniejące `geom, travel_dist_m, sor_id` | **`vertex_id, min_koszt_m`** | sprawozdanie §6.2 |

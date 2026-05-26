@@ -47,31 +47,46 @@ node["amenity"="pharmacy"](52.10,20.85,52.37,21.27);
 out body;'
 
 # ---------------------------------------------------------------------- 1. Fetch
-echo "[1/4] Pobieranie aptek z Overpass API..."
-
-fetched=0
-for endpoint in "${OVERPASS_ENDPOINTS[@]}"; do
-    echo "      -> ${endpoint}"
-    if curl -sS --max-time 120 --fail \
-            -X POST -d "data=${OVERPASS_QUERY}" \
-            "${endpoint}" -o "${JSON_PATH}.tmp"; then
-        # Sanity check: poprawny JSON + niepuste 'elements'
-        if python3 -c "import json,sys; d=json.load(open('${JSON_PATH}.tmp')); sys.exit(0 if isinstance(d.get('elements'),list) and len(d['elements'])>0 else 1)"; then
-            mv "${JSON_PATH}.tmp" "${JSON_PATH}"
-            fetched=1
-            break
-        else
-            echo "      (pusta odpowiedź, próbuję kolejny endpoint)"
-            rm -f "${JSON_PATH}.tmp"
-        fi
-    else
-        echo "      (błąd HTTP, próbuję kolejny endpoint)"
-        rm -f "${JSON_PATH}.tmp"
-    fi
+# Cache-first: jeśli data/apteki.json istnieje i NIE podano `--refresh`,
+# używamy lokalnej kopii (Overpass API bywa niedostępne / wolne).
+# Wymuszenie pobrania: ./scripts/import_apteki.sh --refresh
+REFRESH=0
+for arg in "$@"; do
+    [[ "$arg" == "--refresh" || "$arg" == "--no-cache" ]] && REFRESH=1
 done
 
+fetched=0
+if [ "${REFRESH}" -eq 0 ] && [ -f "${JSON_PATH}" ]; then
+    if python3 -c "import json,sys; d=json.load(open('${JSON_PATH}')); sys.exit(0 if isinstance(d.get('elements'),list) and len(d['elements'])>0 else 1)" 2>/dev/null; then
+        echo "[1/4] Użycie lokalnego cache (data/apteki.json) — pomiń aby wymusić download: --refresh"
+        fetched=1
+    fi
+fi
+
 if [ "${fetched}" -ne 1 ]; then
-    echo "BŁĄD: nie udało się pobrać danych z żadnego endpointu Overpass." >&2
+    echo "[1/4] Pobieranie aptek z Overpass API..."
+    for endpoint in "${OVERPASS_ENDPOINTS[@]}"; do
+        echo "      -> ${endpoint}"
+        if curl -sS --max-time 120 --fail \
+                -X POST -d "data=${OVERPASS_QUERY}" \
+                "${endpoint}" -o "${JSON_PATH}.tmp"; then
+            if python3 -c "import json,sys; d=json.load(open('${JSON_PATH}.tmp')); sys.exit(0 if isinstance(d.get('elements'),list) and len(d['elements'])>0 else 1)"; then
+                mv "${JSON_PATH}.tmp" "${JSON_PATH}"
+                fetched=1
+                break
+            else
+                echo "      (pusta odpowiedź, próbuję kolejny endpoint)"
+                rm -f "${JSON_PATH}.tmp"
+            fi
+        else
+            echo "      (błąd HTTP, próbuję kolejny endpoint)"
+            rm -f "${JSON_PATH}.tmp"
+        fi
+    done
+fi
+
+if [ "${fetched}" -ne 1 ]; then
+    echo "BŁĄD: brak cache (data/apteki.json) i nie udało się pobrać z Overpass." >&2
     exit 1
 fi
 
