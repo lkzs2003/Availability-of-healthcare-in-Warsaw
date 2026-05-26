@@ -14,14 +14,14 @@ Wszystkie dane z publicznych źródeł: **GUS BDL**, **OpenStreetMap**, **Geopor
 
 ---
 
-## Szybki start (3 komendy)
+## Szybki start
 
 ```bash
 git clone https://github.com/lkzs2003/Availability-of-healthcare-in-Warsaw.git
 cd Availability-of-healthcare-in-Warsaw
 cp .env.example .env
-docker compose up -d --build       # ~13 sekund (target z dokumentacji: <15 min)
-./scripts/import_real_data.sh      # ~3 minuty od zera, ~30 s z cache
+docker compose up -d --build   
+./scripts/import_real_data.sh
 ```
 
 Po tym:
@@ -132,23 +132,23 @@ Po tym:
 
 ### Pojedynczy scenariusz
 ```bash
-./scripts/run_scenario.sh 1   # Pustynie medyczne
-./scripts/run_scenario.sh 4   # Gęstość aptek
+./scripts/run_scenario.sh 1   
+./scripts/run_scenario.sh 4   
 ```
 
 ### Pojedynczy eksperyment
 ```bash
-./scripts/run_experiment.sh 1   # E1: walidacja importu
-./scripts/run_experiment.sh 2   # E2: end-to-end run wszystkich scenariuszy
-./scripts/run_experiment.sh 6   # E6: clean rebuild + timing
+./scripts/run_experiment.sh 1   
+./scripts/run_experiment.sh 2  
+./scripts/run_experiment.sh 6   
 ```
 
 ### Import rzeczywistych danych
 ```bash
-./scripts/import_real_data.sh                          # wszystkie
-./scripts/import_real_data.sh --only demografia        # tylko GUS BDL
-./scripts/import_real_data.sh --only apteki            # tylko OSM amenity=pharmacy
-./scripts/import_real_data.sh --no-cache               # ignoruje cache, re-fetch
+./scripts/import_real_data.sh                          
+./scripts/import_real_data.sh --only demografia       
+./scripts/import_real_data.sh --only apteki          
+./scripts/import_real_data.sh --no-cache            
 ```
 
 ### Realna sieć drogowa OSM (opcjonalnie)
@@ -189,8 +189,6 @@ Pozwala bulk-load (vertices -> edges) w jednej transakcji bez utraty integralno�
 - `NOT NULL` + FK na grafie zapobiega corrupt rows
 - Wszystkie INSERT z fetcher'a escapowane (`sql_str()`)
 
-Pełne uzasadnienia w [sprawozdaniu końcowym](docs/reports/sprawozdanie_koncowe.pdf).
-
 ---
 
 ## Dokumentacja
@@ -202,7 +200,7 @@ Pełne uzasadnienia w [sprawozdaniu końcowym](docs/reports/sprawozdanie_koncowe
 
 ---
 
-## Ograniczenia (świadome)
+## Ograniczenia
 
 - **Model ludności** — równomierne rozproszenie w obrębie dzielnicy (wpływa na S1 Q7, S3 Q4). Jawnie odnotowane w dokumentacji wstępnej.
 - **Siatka drogowa 5 km (seed)** — minimalny graf do testów; realne izochrony wymagają `./scripts/import_osm.sh`.
@@ -212,7 +210,7 @@ Pełne uzasadnienia w [sprawozdaniu końcowym](docs/reports/sprawozdanie_koncowe
 
 ---
 
-## Wybrane wyniki (real-data)
+## Wybrane wyniki 
 
 ### S4 — najlepsze i najgorsze dzielnice po dostępności aptek (stan po V1.1+V1.2)
 ```
@@ -228,7 +226,7 @@ Białołęka:    4 968 mieszk./aptekę   (najgorsza, 31 aptek)
 
 ### S1 — % powierzchni dzielnicy będący pustynią medyczną
 ```
-Wilanów:      83.6%     <- suburbia z dużą powierzchnią parków/lasów
+Wilanów:      83.6%     <- duża powierzchnia parków/lasów
 Wawer:        82.6%     <- Mazowiecki Park Krajobrazowy
 Białołęka:    76.2%     <- rozproszona zabudowa
 Bielany:      69.5%
@@ -257,4 +255,3 @@ Elapsed: 13 seconds (target: < 900 s = 15 min)
 - **Łukasz Siemionek** — lukals2203@gmail.com
 - **Piotr Liszewski**
 
-Repo: https://github.com/lkzs2003/Availability-of-healthcare-in-Warsaw
