@@ -25,6 +25,7 @@ from qgis.core import (
     QgsMapRendererCustomPainterJob, QgsSymbol, QgsRendererCategory,
     QgsCategorizedSymbolRenderer, QgsGraduatedSymbolRenderer,
     QgsFillSymbol, QgsLineSymbol, QgsMarkerSymbol, QgsSingleSymbolRenderer,
+    QgsWkbTypes,
 )
 from qgis.PyQt.QtCore import QSize, QSizeF, Qt
 from qgis.PyQt.QtGui import QImage, QPainter, QColor, QFont
@@ -73,19 +74,37 @@ def style_single(layer: QgsVectorLayer, color: str, alpha: float = 1.0,
                  marker_size: float = 3.0):
     if layer is None:
         return
-    gtype = layer.geometryType()
-    if gtype == 2:  # polygon
+    # QGIS 4.0 — geometryType() zwraca enum Qgis.GeometryType (NIE int),
+    # więc `if gtype == 2` w cichy sposób upada do gałęzi `else` (Point)
+    # dla każdej geometrii. Używamy WKB type-string (`"Polygon"`,
+    # `"LineString"`, `"Point"` itd.) który jest stabilny między wersjami.
+    wkb_name = QgsWkbTypes.displayString(layer.wkbType()).lower()
+    if "polygon" in wkb_name:
+        # alpha=0 dla polygonu -> tylko obrys (transparent fill, widoczne dla
+        # warstw "kontur miasta" / "granice dzielnic" gdzie spod warstwy
+        # ma być widoczne tło lub kolejna warstwa)
+        fill_color = "0,0,0,0" if alpha == 0 else color
         sym = QgsFillSymbol.createSimple({
-            "color": color, "outline_color": outline,
-            "outline_width": str(outline_w), "alpha": str(alpha)})
-    elif gtype == 1:  # line
+            "color": fill_color,
+            # QGIS 4 — używamy zarówno starych (outline_*) jak nowych (style_*)
+            # kluczy, żeby zadziałało na obu wersjach SDK
+            "outline_color": outline,
+            "outline_width": str(outline_w),
+            "outline_style": "solid",
+        })
+    elif "line" in wkb_name:
         sym = QgsLineSymbol.createSimple({
             "color": color, "width": str(outline_w)})
-    else:  # point
+    else:  # point / multipoint
         sym = QgsMarkerSymbol.createSimple({
             "color": color, "size": str(marker_size),
             "outline_color": outline, "outline_width": "0.2"})
     layer.setRenderer(QgsSingleSymbolRenderer(sym))
+    # Opacity ustawiamy na poziomie warstwy (QGIS 4 ignoruje klucz "alpha"
+    # w createSimple). Nie wywołujemy setOpacity gdy alpha=0 dla polygonu —
+    # tam fill jest już transparent, ale obrys musi pozostać widoczny.
+    if 0 < alpha < 1.0:
+        layer.setOpacity(alpha)
 
 
 def render_layout(layers: list, title: str, output_png: str, subtitle: str = ""):
@@ -300,23 +319,69 @@ def main():
         output_png=str(OUT / "s2_qgis.png"))
 
     # ====================  S3 — Voronoi POZ + kandydaci ====================
-    voronoi = load_postgis("Voronoi POZ",
+    # Naprawa: poprzednia wersja wyświetlała tylko komórki Voronoia.
+    # Punkty POZ (zielone) i top-5 kandydatów (pomarańczowe) były niewidoczne,
+    # bo (a) Voronoi miał pełne nieprzezroczyste wypełnienie zasłaniające punkty,
+    # (b) markery były za małe, (c) kolejność warstw była niespójna z konwencją
+    # `setLayers` (pierwsza warstwa = na dnie z-orderu).
+    voronoi = load_postgis("Voronoi POZ (komórki)",
                             "SELECT cell_id AS id, strefa_clip AS geom, area_m2 "
                             "FROM mv_voronoi_poz",
                             key="id")
     if voronoi:
-        style_single(voronoi, "#cccccc", 0.0, "#555", 0.3)
-    # Top-5 kandydatów
-    top5 = load_postgis("Top-5 kandydatów (centroidy)",
-        "SELECT cell_id AS id, centroid AS geom "
+        # Symbol budowany ręcznie:
+        #   - wypełnienie półprzezroczyste szare (alpha=60/255 ≈ 23 %)
+        #     żeby punkty POZ były widoczne pod spodem,
+        #   - obrys w PEŁNEJ opacity (alpha=255) — czytelny podział
+        #     na 231 komórek Voronoia.
+        # NIE używamy setOpacity() — zredukowałby też obrys.
+        from qgis.core import QgsSimpleFillSymbolLayer, QgsUnitTypes
+        from qgis.PyQt.QtCore import Qt
+        fill_color = QColor(210, 210, 210, 60)
+        stroke_color = QColor("#222222")     # ciemny, pełna alpha
+        slayer = QgsSimpleFillSymbolLayer(fill_color)
+        slayer.setStrokeColor(stroke_color)
+        slayer.setStrokeWidth(0.35)
+        slayer.setStrokeWidthUnit(QgsUnitTypes.RenderMillimeters)
+        slayer.setStrokeStyle(Qt.PenStyle.SolidLine)
+        sym_vor = QgsFillSymbol()
+        sym_vor.changeSymbolLayer(0, slayer)
+        voronoi.setRenderer(QgsSingleSymbolRenderer(sym_vor))
+
+    # Top-5 kandydatów — DUŻE pomarańczowe markery z labelem numeru
+    top5 = load_postgis("Top 5 kandydatów (centroidy)",
+        "SELECT row_number() OVER (ORDER BY area_m2 DESC) AS id, "
+        "       row_number() OVER (ORDER BY area_m2 DESC) AS rank_nr, "
+        "       centroid AS geom "
         "FROM mv_voronoi_poz ORDER BY area_m2 DESC LIMIT 5",
         geom_col="geom", key="id")
     if top5:
-        style_single(top5, "#ff7f0e", 1.0, "#000", 0.4, marker_size=6.0)
+        style_single(top5, "#ff7f0e", 1.0, "#000", 0.8, marker_size=10.0)
+        # Etykiety 1..5 na markerach (QGIS 4 — domyślne placement = AroundPoint;
+        # nie ustawiamy custom, by ominąć zmianę enum LabelPlacement w API 4.0)
+        from qgis.core import QgsPalLayerSettings, QgsTextFormat, QgsVectorLayerSimpleLabeling
+        # QFont, QColor już zaimportowane globalnie na górze pliku
+        label = QgsPalLayerSettings()
+        label.fieldName = "rank_nr"
+        label.enabled = True
+        tf = QgsTextFormat()
+        tf.setFont(QFont("Helvetica", 11))
+        tf.setSize(11)
+        tf.setColor(QColor("#000000"))
+        label.setFormat(tf)
+        top5.setLabeling(QgsVectorLayerSimpleLabeling(label))
+        top5.setLabelsEnabled(True)
+
+    # Restyle POZ – większy zielony marker, kontur biały (kontrast na szarym tle)
+    if poz:
+        style_single(poz, "#2ca02c", 1.0, "#ffffff", 0.4, marker_size=3.5)
+
+    # Kolejność z-order (od dołu): dzielnice -> voronoi (półprzezroczysty)
+    # -> POZ (zielone punkty) -> top5 (pomarańczowe punkty z labelami, na samej górze)
     render_layout(
-        [voronoi, top5, poz, dzielnice] if voronoi else [top5, poz, dzielnice],
+        [dzielnice, voronoi, poz, top5] if voronoi else [dzielnice, poz, top5],
         title="S3 — Lokalizacja nowej POZ (Voronoi + Top-5)",
-        subtitle="Komórki Voronoia POZ + centroidy 5 największych stref = kandydaci",
+        subtitle="Komórki Voronoia POZ + 231 przychodni (zielone) + 5 centroidów (pomarańczowe 1-5)",
         output_png=str(OUT / "s3_qgis.png"))
 
     # ====================  S4 — Kwartyle aptek ====================

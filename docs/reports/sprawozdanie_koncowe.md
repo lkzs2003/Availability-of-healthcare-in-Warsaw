@@ -441,7 +441,7 @@ SELECT rk AS rank_nr, x_pl92, y_pl92, pow_strefy_km2, szac_mieszkancy_1km
 
 ### Wizualizacja
 
-![S3 — Komórki Voronoia POZ + 5 kandydatów (pomarańczowe) na lokalizację nowej przychodni. `ST_VoronoiPolygons` + centroidy największych stref. Render: **QGIS 4.0.2**.](../img/qgis/s3_qgis.png){width=85%}
+![S3 — 231 komórek Voronoia (szary półprzezroczysty fill z czarnym obrysem) + 231 przychodni POZ (zielone punkty — generatory diagramu) + 5 największych komórek z numerowanymi pomarańczowymi markerami **1–5** = kandydaci na nową przychodnię. `ST_VoronoiPolygons` + centroidy największych stref. Render: **QGIS 4.0.2**.](../img/qgis/s3_qgis.png){width=85%}
 
 ### Komentarz analityczny
 
